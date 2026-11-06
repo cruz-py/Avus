@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
@@ -79,7 +80,7 @@ import pt.avus.app.reminders.ReplyReminderWorker
 import java.util.concurrent.TimeUnit
 
 @Composable
-fun RepliesScreen(state: AppState, vm: AvusViewModel, goToHomes: () -> Unit) {
+fun RepliesScreen(state: AppState, vm: AvusViewModel, goToHomes: () -> Unit, onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     var statusFilter by rememberSaveable { mutableStateOf<ContactStatus?>(null) }
     var editing by remember { mutableStateOf<Contact?>(null) }
@@ -120,6 +121,7 @@ fun RepliesScreen(state: AppState, vm: AvusViewModel, goToHomes: () -> Unit) {
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text("Respostas dos lares") },
+                actions = { IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, "Definições") } },
                 colors = screenTopBarColors(),
                 scrollBehavior = scrollBehavior,
             )

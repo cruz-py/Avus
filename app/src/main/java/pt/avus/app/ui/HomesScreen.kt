@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -97,7 +98,7 @@ import pt.avus.app.letter.Sender
 private const val CARTA_SOCIAL_URL = "https://www.cartasocial.pt"
 
 @Composable
-fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
+fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var district by rememberSaveable { mutableStateOf<String?>(null) }
@@ -245,6 +246,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
                     Text("${filtered.size} lares · ${state.selectedIds.size} selecionados")
                 }),
                 actions = {
+                    IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, "Definições") }
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Mais opções") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
                         DropdownMenuItem(text = { Text("Adicionar lar manualmente") }, onClick = { menu = false; homeToEdit = CareHome("", "") })

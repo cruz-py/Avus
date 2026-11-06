@@ -54,6 +54,7 @@ fun AvusApp(vm: AvusViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     var currentTab by rememberSaveable { mutableStateOf(AppTab.HOMES) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(message) {
@@ -63,7 +64,7 @@ fun AvusApp(vm: AvusViewModel = viewModel()) {
         }
     }
 
-    BackHandler(enabled = currentTab != AppTab.HOMES) { currentTab = AppTab.HOMES }
+    BackHandler(enabled = currentTab != AppTab.HOMES && !showSettings) { currentTab = AppTab.HOMES }
 
     // A reminder notification (or a recorded reply) asks to show "Respostas".
     val openReplies by vm.openReplies.collectAsStateWithLifecycle()
@@ -90,6 +91,12 @@ fun AvusApp(vm: AvusViewModel = viewModel()) {
                 onSave = { homeId, status, note -> vm.saveReply(homeId, status, note) },
             )
         }
+    }
+
+    val openSettings = { showSettings = true }
+    if (showSettings && state.isLoaded) {
+        SettingsScreen(state, vm, snackbar, onBack = { showSettings = false })
+        return
     }
 
     Scaffold(
@@ -128,15 +135,16 @@ fun AvusApp(vm: AvusViewModel = viewModel()) {
                 label = "tabs",
             ) { tab ->
                 when (tab) {
-                    AppTab.HOMES -> HomesScreen(state, vm, goToSend = { currentTab = AppTab.SEND })
-                    AppTab.RESIDENT -> ResidentScreen(state, vm)
+                    AppTab.HOMES -> HomesScreen(state, vm, goToSend = { currentTab = AppTab.SEND }, onOpenSettings = openSettings)
+                    AppTab.RESIDENT -> ResidentScreen(state, vm, onOpenSettings = openSettings)
                     AppTab.SEND -> SendScreen(
                         state, vm,
                         goToHomes = { currentTab = AppTab.HOMES },
                         goToResident = { currentTab = AppTab.RESIDENT },
                         goToReplies = { currentTab = AppTab.REPLIES },
+                        onOpenSettings = openSettings,
                     )
-                    AppTab.REPLIES -> RepliesScreen(state, vm, goToHomes = { currentTab = AppTab.HOMES })
+                    AppTab.REPLIES -> RepliesScreen(state, vm, goToHomes = { currentTab = AppTab.HOMES }, onOpenSettings = openSettings)
                 }
             }
         }

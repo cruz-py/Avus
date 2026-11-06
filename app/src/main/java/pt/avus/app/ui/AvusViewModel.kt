@@ -12,6 +12,7 @@ import pt.avus.app.data.DefaultDocuments
 import pt.avus.app.data.Document
 import pt.avus.app.data.ContactStatus
 import pt.avus.app.data.CsvImporter
+import pt.avus.app.data.AppSettings
 import pt.avus.app.data.CareHome
 import pt.avus.app.data.DistanceReference
 import pt.avus.app.data.FollowUp
@@ -56,6 +57,7 @@ data class AppState(
     val distanceReference: DistanceReference? = null,
     /** Total size of the attached documents (kept up to date in the background). */
     val attachmentsSizeBytes: Long = 0,
+    val settings: AppSettings = AppSettings(),
 ) {
     val selectedHomes: List<CareHome> get() = homes.filter { it.id in selectedIds }
     /** Documents that apply to this resident (e.g. CC vs BI). */
@@ -104,7 +106,28 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
             officialListDate = repo.loadOfficialListState()?.takeUnless { it.removed }?.date,
             officialListAvailable = repo.hasAsset(OfficialList.CSV_ASSET) && repo.hasAsset(OfficialList.META_ASSET),
             distanceReference = repo.loadDistanceReference(),
+            settings = repo.loadSettings(),
         )
+    }
+
+    // ---------- Settings ----------
+
+    fun updateSettings(transform: (AppSettings) -> AppSettings) {
+        _state.update { it.copy(settings = transform(it.settings)) }
+        viewModelScope.launch { repo.saveSettings(_state.value.settings) }
+    }
+
+    /** Deletes the family's data from this phone (see [Repository.deleteUserData]); the official list is reinstalled. */
+    fun deleteMyData() {
+        viewModelScope.launch {
+            saveProfileJob?.cancel()
+            saveLetterJob?.cancel()
+            repo.deleteUserData()
+            load()
+            refreshAttachmentsSize()
+            installOfficialList()
+            showMessage("Os seus dados foram apagados deste telemóvel.")
+        }
     }
 
     // ---------- Backup of the family's own data ----------

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,8 +14,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -26,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
@@ -60,7 +60,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import pt.avus.app.data.Document
 import pt.avus.app.data.FieldType
@@ -70,16 +70,8 @@ import pt.avus.app.letter.LetterGenerator
 import pt.avus.app.letter.Sender
 
 @Composable
-fun ResidentScreen(state: AppState, vm: AvusViewModel) {
+fun ResidentScreen(state: AppState, vm: AvusViewModel, onOpenSettings: () -> Unit) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    var menu by remember { mutableStateOf(false) }
-    var pendingImport by remember { mutableStateOf<android.net.Uri?>(null) }
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-        uri?.let { vm.exportBackup(it) }
-    }
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        pendingImport = uri
-    }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -89,19 +81,7 @@ fun ResidentScreen(state: AppState, vm: AvusViewModel) {
             LargeFlexibleTopAppBar(
                 title = { Text("Utente") },
                 subtitle = state.profile[ProfileFields.NAME]?.takeIf { it.isNotBlank() }?.let { name -> { Text(name) } },
-                actions = {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Mais opções") }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                        DropdownMenuItem(
-                            text = { Text("Exportar os meus dados") },
-                            onClick = { menu = false; exportLauncher.launch("avus-dados-${java.time.LocalDate.now()}.zip") },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Importar os meus dados") },
-                            onClick = { menu = false; importLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
-                        )
-                    }
-                },
+                actions = { IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, "Definições") } },
                 colors = screenTopBarColors(),
                 scrollBehavior = scrollBehavior,
             )
@@ -110,8 +90,7 @@ fun ResidentScreen(state: AppState, vm: AvusViewModel) {
         Column(Modifier.fillMaxSize().padding(padding)) {
             // Connected button group instead of tabs (Material 3 Expressive).
             Row(
-                // Same height for all three, even when "Documentos (0/11)" needs two lines.
-                Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = ScreenPadding).padding(bottom = 12.dp),
+                Modifier.fillMaxWidth().padding(horizontal = ScreenPadding).padding(bottom = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
             ) {
                 val labels = listOf("Ficha", "Contacto", "Documentos (${state.attachedDocuments.size}/${state.visibleDocuments.size})")
@@ -119,7 +98,7 @@ fun ResidentScreen(state: AppState, vm: AvusViewModel) {
                     ToggleButton(
                         checked = selectedTab == i,
                         onCheckedChange = { selectedTab = i },
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        modifier = Modifier.weight(1f),
                         shapes = when (i) {
                             0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
                             labels.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
@@ -127,7 +106,15 @@ fun ResidentScreen(state: AppState, vm: AvusViewModel) {
                         },
                         // Unchecked half on the bright surface, so it stands out from the tonal page.
                         colors = ToggleButtonDefaults.colors(containerColor = contentSurface),
-                    ) { Text(label, textAlign = TextAlign.Center) }
+                    ) {
+                        // One line: the selected label scrolls if it does not fit ("Documentos (0/11)").
+                        Text(
+                            label,
+                            maxLines = 1,
+                            overflow = if (selectedTab == i) TextOverflow.Clip else TextOverflow.Ellipsis,
+                            modifier = if (selectedTab == i) Modifier.basicMarquee(iterations = Int.MAX_VALUE) else Modifier,
+                        )
+                    }
                 }
             }
             when (selectedTab) {
@@ -136,21 +123,6 @@ fun ResidentScreen(state: AppState, vm: AvusViewModel) {
                 else -> DocumentList(state, vm)
             }
         }
-    }
-
-    pendingImport?.let { uri ->
-        AlertDialog(
-            onDismissRequest = { pendingImport = null },
-            title = { Text("Importar os dados?") },
-            text = {
-                Text(
-                    "Substitui a ficha, o contacto, os documentos, as respostas e os lares acrescentados neste telemóvel " +
-                        "pelos da cópia de segurança. A lista oficial de lares mantém-se."
-                )
-            },
-            confirmButton = { TextButton(onClick = { vm.importBackup(uri); pendingImport = null }) { Text("Importar") } },
-            dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancelar") } },
-        )
     }
 }
 

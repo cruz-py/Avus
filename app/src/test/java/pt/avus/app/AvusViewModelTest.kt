@@ -19,6 +19,7 @@ import pt.avus.app.data.CareHome
 import pt.avus.app.data.ContactStatus
 import pt.avus.app.data.OfficialList
 import pt.avus.app.data.ProfileFields
+import pt.avus.app.data.ThemeMode
 import pt.avus.app.ui.AvusViewModel
 import java.io.File
 
@@ -109,5 +110,35 @@ class AvusViewModelTest {
         assertEquals("912345678", saved.phone)
         assertEquals(setOf("phone"), saved.userEdited)
         assertTrue(saved.official)
+    }
+
+    @Test fun settingsArePersisted() {
+        val vm = loadedViewModel()
+        vm.updateSettings { it.copy(theme = ThemeMode.DARK, reminders = false) }
+        waitFor("settings saved") { File(files, "settings.json").exists() }
+        val again = loadedViewModel().state.value.settings
+        assertEquals(ThemeMode.DARK, again.theme)
+        assertFalse(again.reminders)
+    }
+
+    @Test fun deletingMyDataKeepsTheOfficialListAndSettings() {
+        assumeTrue("the list is generated, not in git", bundledListAvailable())
+        val vm = loadedViewModel()
+        waitFor("official list") { vm.state.value.officialListDate != null }
+        vm.updateField(ProfileFields.NAME, "Manuel")
+        vm.saveReply("cs-42", ContactStatus.REPLIED, "nota")
+        vm.saveHome(CareHome("", "Lar à mão"))
+        vm.updateSettings { it.copy(theme = ThemeMode.LIGHT) }
+        waitFor("saved") { File(files, "contacts.json").exists() && File(files, "settings.json").exists() }
+
+        vm.deleteMyData()
+        waitFor("deleted and reloaded") {
+            vm.state.value.contacts.isEmpty() && vm.state.value.profile.isEmpty() &&
+                vm.state.value.officialListDate != null && !vm.state.value.isImporting &&
+                vm.state.value.homes.isNotEmpty()
+        }
+        assertTrue(vm.state.value.homes.none { it.manual })
+        assertEquals(vm.state.value.homes.size, vm.state.value.homes.count { it.official })
+        assertEquals(ThemeMode.LIGHT, vm.state.value.settings.theme)
     }
 }

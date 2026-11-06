@@ -11,6 +11,10 @@ The app's UI and the letters it writes are in European Portuguese (pt-PT); the c
 - **Enviar (send)** — generates the pre-registration letter (editable) and opens the email app with everything filled in: one email to all homes (in Bcc) or one per home; optional PDF of the letter.
 - **Respostas (replies)** — follow-up of each contact (sent, replied, visit, waiting list, place available…) with dated notes; replies can be shared into the app from any email/message app, the app asks how a call went, and a daily on-device reminder flags homes without an answer for a week.
 
+## Public page
+
+User-facing information lives in the public repository **[cruz-py/Avus-app](https://github.com/cruz-py/Avus-app)**: what the app does, APK releases, the privacy policy (`PRIVACIDADE.md`, linked from the app's Definições) and bug reports (Issues). This repository (`Avus`, the code) stays private.
+
 ## Privacy
 
 All data stays on the phone (backups disabled). Nothing is sent until the user taps "Send" in their own email app.

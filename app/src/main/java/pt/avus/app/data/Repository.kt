@@ -118,6 +118,23 @@ class Repository(private val context: Context) {
         }
     }
 
+    suspend fun loadSettings(): AppSettings = AppSettings.parse(store.read("settings.json"))
+
+    suspend fun saveSettings(settings: AppSettings) = writeFile("settings.json", settings.toJson())
+
+    /**
+     * "Apagar os meus dados": the family's data (profile, contact, documents and files, follow-up,
+     * selection, letter, homes added by hand and corrections). The official list is reinstalled clean
+     * on the next load; settings are kept.
+     */
+    suspend fun deleteUserData() = store.exclusive {
+        listOf(
+            "profile.json", "contacts.json", "documents.json", "removed_documents.json", "selection.json",
+            "letter.txt", "distance_reference.txt", "reminders.json", "homes.json", "official_list.txt",
+        ).forEach { File(dir, it).delete() }
+        File(dir, "documents").deleteRecursively()
+    }
+
     fun hasAsset(name: String): Boolean = context.assets.list("")?.contains(name) == true
 
     suspend fun readAsset(name: String): ByteArray = withContext(Dispatchers.IO) {

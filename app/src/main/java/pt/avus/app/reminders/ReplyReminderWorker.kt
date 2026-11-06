@@ -32,6 +32,7 @@ class ReplyReminderWorker(context: Context, params: WorkerParameters) : Coroutin
     override suspend fun doWork(): Result {
         if (!canNotify(applicationContext)) return Result.success()
         val repo = Repository(applicationContext)
+        if (!repo.loadSettings().reminders) return Result.success()
         val now = System.currentTimeMillis()
         val contacts = repo.loadContacts()
         val reminded = repo.loadReminded()
