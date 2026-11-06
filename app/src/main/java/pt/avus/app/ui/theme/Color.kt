@@ -4,9 +4,10 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
-// Fallback colour schemes for devices without dynamic colour (Android 8–11).
+// The app's own colour schemes, used unless the wallpaper colours are turned on (Android 12+).
 // Generated with the Material colour utilities (TonalSpot, 2025 spec) from seed #1F4E8C,
-// the navy of the app icon (branding/avus-icon.svg). On Android 12+ the wallpaper-based dynamic scheme is used instead.
+// the navy of the app icon (branding/avus-icon.svg). On Android 12+ the wallpaper-based dynamic scheme
+// is used instead if the user turns on "Cores do papel de parede" in Definições.
 
 internal val lightScheme = lightColorScheme(
     primary = Color(0xFF46608A),

@@ -10,13 +10,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 /**
- * Material 3 Expressive theme (the Android 16/17 look): wallpaper-based dynamic colour when
- * available, expressive spring motion, and the default expressive type and shape scales.
+ * Material 3 Expressive theme (the Android 16/17 look): wallpaper-based dynamic colour if turned
+ * on in Definições (Android 12+), expressive spring motion, and the default expressive type and shape scales.
  */
 @Composable
 fun AvusTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val colorScheme = when {

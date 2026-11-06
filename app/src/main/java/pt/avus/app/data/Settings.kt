@@ -7,8 +7,8 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 /** User preferences ("Definições"). */
 data class AppSettings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
-    /** Wallpaper-based colours (Android 12+). */
-    val dynamicColor: Boolean = true,
+    /** Wallpaper-based colours (Android 12+). Off by default, so the app shows the Avus blue. */
+    val dynamicColor: Boolean = false,
     /** Daily reminder about homes without an answer for a week. */
     val reminders: Boolean = true,
 ) {
@@ -21,7 +21,7 @@ data class AppSettings(
             val o = text?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return AppSettings()
             return AppSettings(
                 theme = runCatching { ThemeMode.valueOf(o.getString("theme")) }.getOrDefault(ThemeMode.SYSTEM),
-                dynamicColor = o.optBoolean("dynamicColor", true),
+                dynamicColor = o.optBoolean("dynamicColor", false),
                 reminders = o.optBoolean("reminders", true),
             )
         }
