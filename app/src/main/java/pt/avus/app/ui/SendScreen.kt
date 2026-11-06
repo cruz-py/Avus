@@ -1,6 +1,7 @@
 package pt.avus.app.ui
 
 import android.content.Intent
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,10 +9,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -20,19 +21,24 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -43,20 +49,21 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import pt.avus.app.letter.Sender
-import pt.avus.app.letter.LetterGenerator
-import pt.avus.app.data.ProfileFields
-import pt.avus.app.data.CareHome
 import kotlinx.coroutines.launch
+import pt.avus.app.data.CareHome
+import pt.avus.app.data.ProfileFields
+import pt.avus.app.letter.LetterGenerator
+import pt.avus.app.letter.Sender
 
 private enum class SendMode { SINGLE, INDIVIDUAL }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SendScreen(
     state: AppState,
@@ -107,9 +114,21 @@ fun SendScreen(
         }
     }
 
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = screenBackground,
         contentWindowInsets = WindowInsets(0),
-        topBar = { TopAppBar(title = { Text("Enviar pré-inscrição") }) },
+        topBar = {
+            LargeFlexibleTopAppBar(
+                title = { Text("Enviar pré-inscrição") },
+                subtitle = if (selectedHomes.isEmpty()) null else ({
+                    Text("${withEmail.size} de ${selectedHomes.size} lares selecionados têm email.")
+                }),
+                colors = screenTopBarColors(),
+                scrollBehavior = scrollBehavior,
+            )
+        },
     ) { padding ->
         if (selectedHomes.isEmpty()) {
             EmptyState(
@@ -117,61 +136,80 @@ fun SendScreen(
                 "Nenhum lar selecionado",
                 "Escolha na lista os lares a que quer enviar a pré-inscrição.",
                 Modifier.padding(padding),
-            ) { Button(onClick = goToHomes) { Text("Escolher lares") } }
+            ) { Button(onClick = goToHomes, shapes = ButtonDefaults.shapes()) { Text("Escolher lares") } }
             return@Scaffold
         }
 
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
+                .padding(start = ScreenPadding, end = ScreenPadding, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (missing.isNotEmpty()) {
                 Notice("Falta preencher na ficha do utente: ${missing.joinToString(", ")}.", isError = true)
-                OutlinedButton(onClick = goToResident) { Text("Preencher ficha") }
+                OutlinedButton(onClick = goToResident, shapes = ButtonDefaults.shapes()) { Text("Preencher ficha") }
             }
 
-            // Recipients
-            SectionCard("Destinatários") {
-                Text("${withEmail.size} de ${selectedHomes.size} lares selecionados têm email.")
-                if (withoutEmail.isNotEmpty()) {
-                    HorizontalDivider()
-                    Text(
-                        "Sem email — contacte por telefone ou acrescente o email na lista:",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    withoutEmail.forEach { home ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(home.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(home.phone.ifBlank { "sem telefone" }, style = MaterialTheme.typography.bodySmall)
-                            }
-                            if (home.phone.isNotBlank()) {
-                                IconButton(onClick = { Sender.dial(context, home.phone) }) { Icon(Icons.Filled.Phone, "Ligar") }
-                            }
-                        }
+            // Recipients without email (the subtitle already says how many have one)
+            if (withoutEmail.isNotEmpty()) {
+                ListHeader("Sem email — contacte por telefone ou acrescente o email na lista:")
+                Column(verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+                    withoutEmail.forEachIndexed { i, home ->
+                        SegmentedListItem(
+                            colors = segmentedColors(),
+                            shapes = segmentedShapes(i, withoutEmail.size),
+                            leadingContent = { ShapeIcon(Icons.Filled.Phone) },
+                            supportingContent = { Text(home.phone.ifBlank { "sem telefone" }) },
+                            trailingContent = if (home.phone.isNotBlank()) ({
+                                FilledTonalIconButton(onClick = { Sender.dial(context, home.phone) }, shapes = IconButtonDefaults.shapes()) {
+                                    Icon(Icons.Filled.Phone, "Ligar")
+                                }
+                            }) else null,
+                        ) { Text(home.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
                 }
-                TextButton(onClick = goToHomes) { Text("Alterar seleção") }
             }
+            TextButton(onClick = goToHomes, shapes = ButtonDefaults.shapes()) { Text("Alterar seleção") }
 
             // Sending mode
             SectionCard("Como enviar") {
-                RadioOption(
-                    "Um único email para todos",
-                    "Mais rápido. Os lares seguem em Bcc (não veem os outros destinatários)" +
-                        if (relativeEmail.isNotBlank()) " e recebe uma cópia em $relativeEmail." else ".",
-                    mode == SendMode.SINGLE,
-                ) { mode = SendMode.SINGLE }
-                RadioOption(
-                    "Um email para cada lar",
-                    "A carta é dirigida ao nome de cada lar. Mais pessoal, mas tem de carregar em \"Enviar\" uma vez por lar.",
-                    mode == SendMode.INDIVIDUAL,
-                ) { mode = SendMode.INDIVIDUAL; currentIndex = 0 }
-                HorizontalDivider()
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+                ) {
+                    ToggleButton(
+                        checked = mode == SendMode.SINGLE,
+                        onCheckedChange = { mode = SendMode.SINGLE },
+                        modifier = Modifier.weight(1f),
+                        shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
+                    ) { Text("Um único email para todos", textAlign = TextAlign.Center) }
+                    ToggleButton(
+                        checked = mode == SendMode.INDIVIDUAL,
+                        onCheckedChange = { mode = SendMode.INDIVIDUAL; currentIndex = 0 },
+                        modifier = Modifier.weight(1f),
+                        shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                    ) { Text("Um email para cada lar", textAlign = TextAlign.Center) }
+                }
+                AnimatedContent(mode, label = "modeDescription") { m ->
+                    Text(
+                        if (m == SendMode.SINGLE) {
+                            "Mais rápido. Os lares seguem em Bcc (não veem os outros destinatários)" +
+                                if (relativeEmail.isNotBlank()) " e recebe uma cópia em $relativeEmail." else "."
+                        } else {
+                            "A carta é dirigida ao nome de cada lar. Mais pessoal, mas tem de carregar em \"Enviar\" uma vez por lar."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Anexar a carta em PDF")
-                        Text("Útil para os lares imprimirem e arquivarem.", style = MaterialTheme.typography.bodySmall)
+                        Text("Anexar a carta em PDF", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Útil para os lares imprimirem e arquivarem.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     Switch(checked = includePdf, onCheckedChange = { includePdf = it })
                 }
@@ -187,7 +225,7 @@ fun SendScreen(
 
             // Letter
             SectionCard("Carta de pré-inscrição") {
-                Text("Assunto: $subject", style = MaterialTheme.typography.labelLarge)
+                Text("Assunto: $subject", style = MaterialTheme.typography.labelLargeEmphasized)
                 if (state.customLetter != null) {
                     Notice("Editou o texto à mão: alterações na ficha do utente já não atualizam a carta automaticamente.")
                 }
@@ -198,65 +236,65 @@ fun SendScreen(
                     minLines = 12,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     textStyle = MaterialTheme.typography.bodyMedium,
+                    shape = MaterialTheme.shapes.large,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.customLetter != null) {
-                        TextButton(onClick = { confirmReset = true }) { Text("Repor texto automático") }
+                        TextButton(onClick = { confirmReset = true }, shapes = ButtonDefaults.shapes()) { Text("Repor texto automático") }
                     }
-                    TextButton(onClick = {
-                        scope.launch {
-                            runCatching {
-                                val pdf = Sender.generatePdf(context, subject, state.letter, Sender.pdfFileName(state.profile[ProfileFields.NAME].orEmpty()))
-                                val uri = Sender.shareableUri(context, pdf)
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf")
-                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                )
-                            }.onFailure { vm.showMessage("Não há nenhuma app para abrir PDF.") }
-                        }
-                    }) { Text("Pré-visualizar PDF") }
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                runCatching {
+                                    val pdf = Sender.generatePdf(context, subject, state.letter, Sender.pdfFileName(state.profile[ProfileFields.NAME].orEmpty()))
+                                    val uri = Sender.shareableUri(context, pdf)
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf")
+                                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    )
+                                }.onFailure { vm.showMessage("Não há nenhuma app para abrir PDF.") }
+                            }
+                        },
+                        shapes = ButtonDefaults.shapes(),
+                    ) { Text("Pré-visualizar PDF") }
                 }
             }
 
             // Action
             when (mode) {
-                SendMode.SINGLE -> Button(
-                    onClick = { send(withEmail, state.letter) { completedCount = withEmail.size } },
+                SendMode.SINGLE -> SendButton(
+                    text = if (isPreparing) "A preparar…" else "Abrir email para ${withEmail.size} lares",
+                    isPreparing = isPreparing,
                     enabled = canSend,
                     modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (isPreparing) "A preparar…" else "Abrir email para ${withEmail.size} lares")
-                }
+                ) { send(withEmail, state.letter) { completedCount = withEmail.size } }
                 SendMode.INDIVIDUAL -> {
                     val current = withEmail.getOrNull(currentIndex)
                     if (current == null) {
                         if (withEmail.isNotEmpty()) {
                             Notice("Emails preparados para todos os ${withEmail.size} lares.")
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick = { currentIndex = 0 }) { Text("Recomeçar") }
-                                Button(onClick = goToReplies) { Text("Ver respostas") }
+                                OutlinedButton(onClick = { currentIndex = 0 }, shapes = ButtonDefaults.shapes()) { Text("Recomeçar") }
+                                Button(onClick = goToReplies, shapes = ButtonDefaults.shapes()) { Text("Ver respostas") }
                             }
                         }
                     } else {
                         Text(
                             "Lar ${currentIndex + 1} de ${withEmail.size}: ${current.name}",
-                            style = MaterialTheme.typography.titleSmall,
+                            style = MaterialTheme.typography.titleSmallEmphasized,
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { currentIndex++ }) { Text("Saltar") }
-                            Button(
-                                onClick = {
-                                    send(listOf(current), LetterGenerator.addRecipientHeader(state.letter, current.name)) { currentIndex++ }
-                                },
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(
+                                onClick = { currentIndex++ },
+                                modifier = Modifier.heightIn(min = ButtonDefaults.MediumContainerHeight),
+                                shapes = ButtonDefaults.shapesFor(ButtonDefaults.MediumContainerHeight),
+                            ) { Text("Saltar", style = ButtonDefaults.textStyleFor(ButtonDefaults.MediumContainerHeight)) }
+                            SendButton(
+                                text = if (isPreparing) "A preparar…" else "Abrir email",
+                                isPreparing = isPreparing,
                                 enabled = canSend,
                                 modifier = Modifier.weight(1f),
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.Send, null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(if (isPreparing) "A preparar…" else "Abrir email", maxLines = 1)
-                            }
+                            ) { send(listOf(current), LetterGenerator.addRecipientHeader(state.letter, current.name)) { currentIndex++ } }
                         }
                     }
                 }
@@ -298,16 +336,26 @@ fun SendScreen(
     }
 }
 
+/** Medium-size primary button whose shape morphs on press; shows the loading indicator while preparing. */
 @Composable
-private fun RadioOption(title: String, description: String, selected: Boolean, onSelect: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().selectable(selected = selected, onClick = onSelect, role = Role.RadioButton),
-        verticalAlignment = Alignment.Top,
+private fun SendButton(
+    text: String,
+    isPreparing: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val height: Dp = ButtonDefaults.MediumContainerHeight
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = height),
+        shapes = ButtonDefaults.shapesFor(height),
+        contentPadding = ButtonDefaults.contentPaddingFor(height),
     ) {
-        RadioButton(selected = selected, onClick = null, modifier = Modifier.padding(top = 2.dp, end = 12.dp))
-        Column {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        if (isPreparing) LoadingIndicator(Modifier.padding(end = 4.dp).heightIn(max = 32.dp).width(32.dp))
+        else Icon(Icons.AutoMirrored.Filled.Send, null, Modifier.padding(end = 4.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, style = ButtonDefaults.textStyleFor(height), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

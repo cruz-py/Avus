@@ -1,21 +1,30 @@
 package pt.avus.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -32,11 +41,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-enum class AppTab(val label: String, val icon: ImageVector) {
-    HOMES("Lares", Icons.Filled.Home),
-    RESIDENT("Utente", Icons.Filled.Person),
-    SEND("Enviar", Icons.Filled.Email),
-    REPLIES("Respostas", Icons.AutoMirrored.Filled.List),
+enum class AppTab(val label: String, val icon: ImageVector, val selectedIcon: ImageVector) {
+    HOMES("Lares", Icons.Outlined.Home, Icons.Filled.Home),
+    RESIDENT("Utente", Icons.Outlined.Person, Icons.Filled.Person),
+    SEND("Enviar", Icons.Outlined.Email, Icons.Filled.Email),
+    REPLIES("Respostas", Icons.AutoMirrored.Outlined.List, Icons.AutoMirrored.Filled.List),
 }
 
 @Composable
@@ -56,23 +65,23 @@ fun AvusApp(vm: AvusViewModel = viewModel()) {
     BackHandler(enabled = currentTab != AppTab.HOMES) { currentTab = AppTab.HOMES }
 
     Scaffold(
+        containerColor = screenBackground,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            NavigationBar {
-                AppTab.entries.forEach { s ->
-                    NavigationBarItem(
-                        selected = currentTab == s,
-                        onClick = { currentTab = s },
+            ShortNavigationBar {
+                AppTab.entries.forEach { tab ->
+                    val selected = currentTab == tab
+                    ShortNavigationBarItem(
+                        selected = selected,
+                        onClick = { currentTab = tab },
                         icon = {
-                            val badgeCount = when (s) {
-                                AppTab.SEND -> state.selectedIds.size
-                                else -> 0
-                            }
+                            val icon = if (selected) tab.selectedIcon else tab.icon
+                            val badgeCount = if (tab == AppTab.SEND) state.selectedIds.size else 0
                             if (badgeCount > 0) {
-                                BadgedBox(badge = { Badge { Text("$badgeCount") } }) { Icon(s.icon, null) }
-                            } else Icon(s.icon, null)
+                                BadgedBox(badge = { Badge { Text("$badgeCount") } }) { Icon(icon, null) }
+                            } else Icon(icon, null)
                         },
-                        label = { Text(s.label) },
+                        label = { Text(tab.label) },
                     )
                 }
             }
@@ -80,17 +89,27 @@ fun AvusApp(vm: AvusViewModel = viewModel()) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(bottom = padding.calculateBottomPadding())) {
             if (!state.isLoaded) {
-                CircularProgressIndicator(Modifier.align(Alignment.Center))
-            } else when (currentTab) {
-                AppTab.HOMES -> HomesScreen(state, vm, goToSend = { currentTab = AppTab.SEND })
-                AppTab.RESIDENT -> ResidentScreen(state, vm)
-                AppTab.SEND -> SendScreen(
-                    state, vm,
-                    goToHomes = { currentTab = AppTab.HOMES },
-                    goToResident = { currentTab = AppTab.RESIDENT },
-                    goToReplies = { currentTab = AppTab.REPLIES },
-                )
-                AppTab.REPLIES -> RepliesScreen(state, vm, goToHomes = { currentTab = AppTab.HOMES })
+                ContainedLoadingIndicator(Modifier.align(Alignment.Center))
+                return@Box
+            }
+            // Fade-through between tabs, using the theme's expressive motion.
+            val fadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+            AnimatedContent(
+                currentTab,
+                transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
+                label = "tabs",
+            ) { tab ->
+                when (tab) {
+                    AppTab.HOMES -> HomesScreen(state, vm, goToSend = { currentTab = AppTab.SEND })
+                    AppTab.RESIDENT -> ResidentScreen(state, vm)
+                    AppTab.SEND -> SendScreen(
+                        state, vm,
+                        goToHomes = { currentTab = AppTab.HOMES },
+                        goToResident = { currentTab = AppTab.RESIDENT },
+                        goToReplies = { currentTab = AppTab.REPLIES },
+                    )
+                    AppTab.REPLIES -> RepliesScreen(state, vm, goToHomes = { currentTab = AppTab.HOMES })
+                }
             }
         }
     }

@@ -5,6 +5,7 @@ import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -14,66 +15,92 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
+import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import pt.avus.app.letter.Sender
-import pt.avus.app.letter.LetterGenerator
-import pt.avus.app.data.ProfileField
-import pt.avus.app.data.ProfileFields
 import pt.avus.app.data.Document
 import pt.avus.app.data.FieldType
+import pt.avus.app.data.ProfileField
+import pt.avus.app.data.ProfileFields
+import pt.avus.app.letter.LetterGenerator
+import pt.avus.app.letter.Sender
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResidentScreen(state: AppState, vm: AvusViewModel) {
-    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = screenBackground,
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            Column {
-                TopAppBar(title = { Text("Utente") })
-                PrimaryTabRow(selectedTabIndex = selectedTab) {
-                    Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Ficha") })
-                    val attachedCount = state.attachedDocuments.size
-                    Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Documentos ($attachedCount/${state.documents.size})") })
-                }
-            }
+            LargeFlexibleTopAppBar(
+                title = { Text("Utente") },
+                subtitle = state.profile[ProfileFields.NAME]?.takeIf { it.isNotBlank() }?.let { name -> { Text(name) } },
+                colors = screenTopBarColors(),
+                scrollBehavior = scrollBehavior,
+            )
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            // Connected button group instead of tabs (Material 3 Expressive).
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = ScreenPadding).padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+            ) {
+                val labels = listOf("Ficha", "Documentos (${state.attachedDocuments.size}/${state.documents.size})")
+                labels.forEachIndexed { i, label ->
+                    ToggleButton(
+                        checked = selectedTab == i,
+                        onCheckedChange = { selectedTab = i },
+                        modifier = Modifier.weight(1f),
+                        shapes = if (i == 0) ButtonGroupDefaults.connectedLeadingButtonShapes()
+                        else ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                        // Unchecked half on the bright surface, so it stands out from the tonal page.
+                        colors = ToggleButtonDefaults.colors(containerColor = contentSurface),
+                    ) { Text(label) }
+                }
+            }
             if (selectedTab == 0) ResidentForm(state, vm) else DocumentList(state, vm)
         }
     }
@@ -82,7 +109,7 @@ fun ResidentScreen(state: AppState, vm: AvusViewModel) {
 @Composable
 private fun ResidentForm(state: AppState, vm: AvusViewModel) {
     LazyColumn(
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = ScreenPadding, end = ScreenPadding, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
@@ -108,14 +135,10 @@ private fun ProfileFieldInput(field: ProfileField, value: String, onChange: (Str
     val label = field.label + if (required) " *" else ""
     when (field.type) {
         FieldType.OPTIONS -> Column {
-            Text(label, style = MaterialTheme.typography.labelLarge)
+            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 field.options.forEach { option ->
-                    FilterChip(
-                        selected = value == option,
-                        onClick = { onChange(if (value == option) "" else option) },
-                        label = { Text(option) },
-                    )
+                    CheckFilterChip(value == option, { onChange(if (value == option) "" else option) }, option)
                 }
             }
         }
@@ -148,6 +171,7 @@ private fun ProfileFieldInput(field: ProfileField, value: String, onChange: (Str
                 singleLine = field.type != FieldType.MULTILINE,
                 minLines = if (field.type == FieldType.MULTILINE) 2 else 1,
                 keyboardOptions = keyboard,
+                shape = MaterialTheme.shapes.large,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -179,49 +203,62 @@ private fun DocumentList(state: AppState, vm: AvusViewModel) {
     }
     val total = vm.attachmentsSizeBytes()
 
+    fun attach(doc: Document) {
+        pendingDocId = doc.id
+        pickFile.launch(arrayOf("application/pdf", "image/*"))
+    }
+
+    fun view(doc: Document) {
+        vm.documentFile(doc)?.takeIf { it.exists() }?.let { f ->
+            val uri = Sender.shareableUri(context, f)
+            val type = MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.extension.lowercase()) ?: "*/*"
+            runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW).setDataAndType(uri, type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                )
+            }.onFailure { vm.showMessage("Não há nenhuma app para abrir este ficheiro.") }
+        }
+    }
+
     LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(start = ScreenPadding, end = ScreenPadding, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
     ) {
         item {
             Notice(
                 "Documentos habitualmente pedidos pelos lares. Digitalize-os (PDF ou fotografia) e anexe os que já tiver: " +
-                    "seguem em anexo no email. Os que faltarem podem ser entregues mais tarde."
+                    "seguem em anexo no email. Os que faltarem podem ser entregues mais tarde.",
+                Modifier.padding(bottom = 8.dp),
             )
         }
         if (total > 0) {
             item {
                 Text(
                     "Total dos anexos: ${formatSize(total)}",
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelLargeEmphasized,
                     color = if (total > ATTACHMENTS_LIMIT_BYTES) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp, bottom = 8.dp),
                 )
             }
         }
-        items(state.documents, key = { it.id }) { doc ->
-            DocumentCard(
+        itemsIndexed(state.documents, key = { _, doc -> doc.id }) { index, doc ->
+            DocumentRow(
                 doc = doc,
-                onAttach = {
-                    pendingDocId = doc.id
-                    pickFile.launch(arrayOf("application/pdf", "image/*"))
-                },
-                onView = {
-                    vm.documentFile(doc)?.takeIf { it.exists() }?.let { f ->
-                        val uri = Sender.shareableUri(context, f)
-                        val type = MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.extension.lowercase()) ?: "*/*"
-                        runCatching {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW).setDataAndType(uri, type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            )
-                        }.onFailure { vm.showMessage("Não há nenhuma app para abrir este ficheiro.") }
-                    }
-                },
+                index = index,
+                count = state.documents.size,
+                onAttach = { attach(doc) },
+                onView = { view(doc) },
                 onRemove = { vm.removeAttachment(doc.id) },
                 onDelete = { vm.deleteDocument(doc.id) },
+                modifier = Modifier.animateItem(),
             )
         }
         item {
-            OutlinedButton(onClick = { showNewDocument = true }, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { showNewDocument = true },
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                shapes = ButtonDefaults.shapes(),
+            ) {
                 Icon(Icons.Filled.Add, null)
                 Text("Adicionar outro documento", Modifier.padding(start = 8.dp))
             }
@@ -240,6 +277,7 @@ private fun DocumentList(state: AppState, vm: AvusViewModel) {
                     label = { Text("Nome do documento") },
                     placeholder = { Text("Ex.: Declaração de compromisso") },
                     singleLine = true,
+                    shape = MaterialTheme.shapes.large,
                 )
             },
             confirmButton = {
@@ -256,44 +294,70 @@ private fun DocumentList(state: AppState, vm: AvusViewModel) {
 const val ATTACHMENTS_LIMIT_BYTES = 20_000_000L
 
 @Composable
-private fun DocumentCard(
+private fun DocumentRow(
     doc: Document,
+    index: Int,
+    count: Int,
     onAttach: () -> Unit,
     onView: () -> Unit,
     onRemove: () -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    var menu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.CheckCircle,
-                    contentDescription = if (doc.isAttached) "Anexado" else "Por anexar",
-                    tint = if (doc.isAttached) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                    modifier = Modifier.size(22.dp),
+    SegmentedListItem(
+        colors = segmentedColors(),
+        onClick = if (doc.isAttached) onView else onAttach,
+        shapes = segmentedShapes(index, count),
+        modifier = modifier,
+        leadingContent = {
+            if (doc.isAttached) {
+                ShapeIcon(
+                    Icons.Filled.Check,
+                    shape = MaterialShapes.Cookie4Sided,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                 )
-                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    Text(doc.name, style = MaterialTheme.typography.titleSmall)
-                    if (doc.description.isNotBlank()) {
-                        Text(doc.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    doc.originalName?.let {
-                        Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    }
-                }
-                IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, "Retirar da lista") }
+            } else {
+                ShapeIcon(
+                    Icons.Outlined.CheckCircle,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.outline,
+                )
             }
-            Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (doc.isAttached) {
-                    TextButton(onClick = onView) { Text("Ver") }
-                    TextButton(onClick = onRemove) { Text("Remover ficheiro") }
-                    TextButton(onClick = onAttach) { Text("Substituir") }
-                } else {
-                    TextButton(onClick = onAttach) { Text("Anexar ficheiro") }
+        },
+        supportingContent = {
+            Column {
+                if (doc.description.isNotBlank()) Text(doc.description)
+                doc.originalName?.let {
+                    Text(it, style = MaterialTheme.typography.labelMediumEmphasized, color = MaterialTheme.colorScheme.primary)
+                }
+                if (!doc.isAttached) {
+                    Text("Anexar ficheiro", style = MaterialTheme.typography.labelMediumEmphasized, color = MaterialTheme.colorScheme.primary)
                 }
             }
-        }
+        },
+        trailingContent = {
+            Box {
+                IconButton(onClick = { menu = true }) {
+                    Icon(Icons.Filled.MoreVert, if (doc.isAttached) "Anexado" else "Por anexar")
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
+                    if (doc.isAttached) {
+                        DropdownMenuItem(text = { Text("Ver") }, onClick = { menu = false; onView() })
+                        DropdownMenuItem(text = { Text("Substituir") }, onClick = { menu = false; onAttach() })
+                        DropdownMenuItem(text = { Text("Remover ficheiro") }, onClick = { menu = false; onRemove() })
+                    } else {
+                        DropdownMenuItem(text = { Text("Anexar ficheiro") }, onClick = { menu = false; onAttach() })
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text("Retirar da lista") }, onClick = { menu = false; confirmDelete = true })
+                }
+            }
+        },
+    ) {
+        Text(doc.name, style = MaterialTheme.typography.titleSmallEmphasized)
     }
     if (confirmDelete) {
         AlertDialog(

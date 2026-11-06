@@ -2,7 +2,10 @@ package pt.avus.app.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,18 +14,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -32,27 +36,34 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MediumExtendedFloatingActionButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,17 +72,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import pt.avus.app.letter.Sender
 import pt.avus.app.data.CareHome
 import pt.avus.app.data.normalizeForSearch
+import pt.avus.app.letter.Sender
 
 private const val CARTA_SOCIAL_URL = "https://www.cartasocial.pt"
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
     val context = LocalContext.current
@@ -83,7 +96,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-    var openedHome by remember { mutableStateOf<CareHome?>(null) }
+    var openedHomeId by rememberSaveable { mutableStateOf<String?>(null) }
     var homeToEdit by remember { mutableStateOf<CareHome?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -116,14 +129,20 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
         }
     }
 
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = screenBackground,
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            TopAppBar(
+            LargeFlexibleTopAppBar(
                 title = { Text("Lares (ERPI)") },
+                subtitle = if (state.homes.isEmpty()) null else ({
+                    Text("${filtered.size} lares · ${state.selectedIds.size} selecionados")
+                }),
                 actions = {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Mais opções") }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
                         DropdownMenuItem(text = { Text("Importar lista (CSV)") }, onClick = { menu = false; openImport() })
                         DropdownMenuItem(text = { Text("Adicionar lar manualmente") }, onClick = { menu = false; homeToEdit = CareHome("", "") })
                         DropdownMenuItem(text = { Text("Onde obter a lista oficial") }, onClick = { menu = false; showHelp = true })
@@ -133,20 +152,22 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
                         }
                     }
                 },
+                colors = screenTopBarColors(),
+                scrollBehavior = scrollBehavior,
             )
         },
         floatingActionButton = {
-            if (state.selectedIds.isNotEmpty()) {
-                ExtendedFloatingActionButton(
-                    onClick = goToSend,
-                    icon = { Icon(Icons.AutoMirrored.Filled.Send, null) },
-                    text = { Text("Preparar envio (${state.selectedIds.size})") },
-                )
+            AnimatedVisibility(state.selectedIds.isNotEmpty(), enter = scaleIn(), exit = scaleOut()) {
+                MediumExtendedFloatingActionButton(onClick = goToSend) {
+                    Icon(Icons.AutoMirrored.Filled.Send, null)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Preparar envio (${state.selectedIds.size})")
+                }
             }
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (state.isImporting) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (state.isImporting) LinearWavyProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding))
 
             if (state.homes.isEmpty()) {
                 EmptyState(
@@ -155,80 +176,82 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
                     "Importe a lista oficial de Estruturas Residenciais para Pessoas Idosas (Carta Social) " +
                         "em formato CSV, ou adicione lares manualmente.",
                 ) {
-                    Button(onClick = { openImport() }) { Text("Importar lista (CSV)") }
+                    Button(onClick = { openImport() }, shapes = ButtonDefaults.shapes()) { Text("Importar lista (CSV)") }
                     Spacer(Modifier.padding(4.dp))
-                    OutlinedButton(onClick = { homeToEdit = CareHome("", "") }) { Text("Adicionar lar manualmente") }
+                    OutlinedButton(onClick = { homeToEdit = CareHome("", "") }, shapes = ButtonDefaults.shapes()) {
+                        Text("Adicionar lar manualmente")
+                    }
                     Spacer(Modifier.padding(4.dp))
-                    TextButton(onClick = { showHelp = true }) { Text("Onde obter a lista oficial?") }
+                    TextButton(onClick = { showHelp = true }, shapes = ButtonDefaults.shapes()) { Text("Onde obter a lista oficial?") }
                 }
                 return@Column
             }
 
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                placeholder = { Text("Pesquisar por nome, localidade, código postal…") },
-                leadingIcon = { Icon(Icons.Filled.Search, null) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Filled.Clear, "Limpar") }
-                },
-                singleLine = true,
-            )
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OptionPicker("Distrito", district, districts, "Todos os distritos", { district = it; municipality = null })
-                OptionPicker("Concelho", municipality, municipalities, "Todos os concelhos", { municipality = it })
-                FilterChip(selected = onlyWithEmail, onClick = { onlyWithEmail = !onlyWithEmail }, label = { Text("Com email") })
-                FilterChip(selected = onlySelected, onClick = { onlySelected = !onlySelected }, label = { Text("Selecionados") })
-            }
-            Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "${filtered.size} lares · ${state.selectedIds.size} selecionados",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.weight(1f),
-                )
-                if (state.selectedIds.isNotEmpty()) {
-                    TextButton(onClick = { vm.clearSelection() }) { Text("Limpar") }
-                }
-                if (filtered.isNotEmpty() && filtered.size <= 200 && filtered.any { it.id !in state.selectedIds }) {
-                    TextButton(onClick = { vm.selectAll(filtered.map { it.id }) }) { Text("Selecionar todos") }
-                }
-            }
-
             LazyColumn(
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 120.dp),
+                verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
             ) {
-                items(filtered, key = { it.id }) { home ->
-                    CareHomeCard(
+                item(key = "search") {
+                    SearchField(searchQuery, onChange = { searchQuery = it }, Modifier.padding(horizontal = ScreenPadding).padding(bottom = 8.dp))
+                }
+                item(key = "filters") {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = ScreenPadding),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OptionPicker("Distrito", district, districts, "Todos os distritos", { district = it; municipality = null })
+                        OptionPicker("Concelho", municipality, municipalities, "Todos os concelhos", { municipality = it })
+                        CheckFilterChip(onlyWithEmail, { onlyWithEmail = !onlyWithEmail }, "Com email")
+                        CheckFilterChip(onlySelected, { onlySelected = !onlySelected }, "Selecionados")
+                    }
+                }
+                item(key = "selection") {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 8.dp).padding(horizontal = ScreenPadding), horizontalArrangement = Arrangement.End) {
+                        if (state.selectedIds.isNotEmpty()) {
+                            TextButton(onClick = { vm.clearSelection() }, shapes = ButtonDefaults.shapes()) { Text("Limpar") }
+                        }
+                        if (filtered.isNotEmpty() && filtered.size <= 200 && filtered.any { it.id !in state.selectedIds }) {
+                            TextButton(onClick = { vm.selectAll(filtered.map { it.id }) }, shapes = ButtonDefaults.shapes()) {
+                                Text("Selecionar todos")
+                            }
+                        }
+                    }
+                }
+                itemsIndexed(filtered, key = { _, home -> home.id }) { index, home ->
+                    CareHomeRow(
                         home = home,
+                        index = index,
+                        count = filtered.size,
                         selected = home.id in state.selectedIds,
                         contactedAt = contactsByHome[home.id]?.sentAt,
                         onToggle = { vm.toggleSelection(home.id) },
-                        onOpen = { openedHome = home },
+                        onOpen = { openedHomeId = home.id },
+                        modifier = Modifier.animateItem().padding(horizontal = ScreenPadding),
                     )
                 }
                 if (filtered.isEmpty()) {
-                    item { Text("Nenhum lar corresponde aos filtros.", Modifier.padding(16.dp)) }
+                    item(key = "none") {
+                        Text(
+                            "Nenhum lar corresponde aos filtros.",
+                            Modifier.fillMaxWidth().padding(32.dp),
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
     }
 
-    openedHome?.let { home ->
+    state.homes.firstOrNull { it.id == openedHomeId }?.let { home ->
         CareHomeDetails(
             home = home,
             selected = home.id in state.selectedIds,
-            onClose = { openedHome = null },
+            onClose = { openedHomeId = null },
             onToggle = { vm.toggleSelection(home.id) },
-            onEdit = { openedHome = null; homeToEdit = home },
-            onDelete = { openedHome = null; vm.deleteHome(home.id) },
+            onEdit = { openedHomeId = null; homeToEdit = home },
+            onDelete = { openedHomeId = null; vm.deleteHome(home.id) },
             onCall = { Sender.dial(context, home.phone) },
             onMap = { Sender.openMap(context, fullAddress(home)) },
         )
@@ -297,50 +320,89 @@ fun locationLine(home: CareHome): String =
     listOf(home.locality, home.municipality, home.district).map { it.trim() }.filter { it.isNotBlank() }
         .distinctBy { normalizeForSearch(it) }.joinToString(" · ")
 
+/** Pill-shaped search field on a tonal surface, as in Android 16/17 system apps. */
 @Composable
-private fun CareHomeCard(
+private fun SearchField(value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    TextField(
+        value = value,
+        onValueChange = onChange,
+        modifier = modifier.fillMaxWidth(),
+        placeholder = { Text("Pesquisar por nome, localidade, código postal…", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = { Icon(Icons.Filled.Search, null) },
+        trailingIcon = {
+            if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Filled.Clear, "Limpar") }
+        },
+        singleLine = true,
+        shape = CircleShape,
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = contentSurface,
+            unfocusedContainerColor = contentSurface,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+        ),
+    )
+}
+
+@Composable
+private fun CareHomeRow(
     home: CareHome,
+    index: Int,
+    count: Int,
     selected: Boolean,
     contactedAt: Long?,
     onToggle: () -> Unit,
     onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Card(
-        Modifier.fillMaxWidth().clickable(onClick = onOpen),
-        colors = if (selected) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-        else CardDefaults.cardColors(),
-    ) {
-        Row(Modifier.padding(vertical = 8.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = selected, onCheckedChange = { onToggle() })
-            Column(Modifier.weight(1f).padding(end = 8.dp)) {
-                Text(home.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    val colors = if (selected) {
+        ListItemDefaults.segmentedColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            supportingContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    } else segmentedColors()
+    SegmentedListItem(
+        onClick = onOpen,
+        shapes = segmentedShapes(index, count),
+        modifier = modifier,
+        colors = colors,
+        leadingContent = {
+            SelectableAvatar(
+                selected = selected,
+                initials = initialsOf(home.name),
+                onToggle = onToggle,
+                contentDescription = if (selected) "Retirar da seleção" else "Selecionar",
+            )
+        },
+        supportingContent = {
+            Column {
                 val place = locationLine(home)
-                if (place.isNotBlank()) {
-                    Text(place, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (home.legalForm.isNotBlank()) {
-                        Text(home.legalForm, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false))
-                        Spacer(Modifier.width(8.dp))
-                    }
-                    if (contactedAt != null) {
-                        Text("Contactado a ${formatDate(contactedAt)}", style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary)
-                    }
+                if (place.isNotBlank()) Text(place, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (contactedAt != null) {
+                    Text(
+                        "Contactado a ${formatDate(contactedAt)}",
+                        style = MaterialTheme.typography.labelMediumEmphasized,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                } else if (home.legalForm.isNotBlank()) {
+                    Text(home.legalForm, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
+        },
+        trailingContent = {
             Icon(
-                Icons.Filled.Email,
+                if (home.hasEmail) Icons.Filled.Email else Icons.Outlined.Email,
                 contentDescription = if (home.hasEmail) "Tem email" else "Sem email",
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(20.dp),
                 tint = if (home.hasEmail) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
             )
-            Spacer(Modifier.width(8.dp))
-        }
+        },
+    ) {
+        Text(home.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmallEmphasized)
     }
 }
 
+/** Details of a care home in a bottom sheet: quick actions, the facts as a segmented list, and select. */
 @Composable
 private fun CareHomeDetails(
     home: CareHome,
@@ -353,40 +415,68 @@ private fun CareHomeDetails(
     onMap: () -> Unit,
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = { Text(home.name) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                fun entry(label: String, value: String) = label to value
-                listOf(
-                    entry("Entidade", home.owner),
-                    entry("Natureza", home.legalForm),
-                    entry("Morada", fullAddress(home)),
-                    entry("Freguesia", home.parish),
-                    entry("Distrito", home.district),
-                    entry("Capacidade", home.capacity),
-                    entry("Telefone", home.phone),
-                    entry("Email", home.email.ifBlank { "— (pode acrescentar em Editar)" }),
-                ).filter { it.second.isNotBlank() }.forEach { (r, v) ->
-                    Column {
-                        Text(r, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(v, style = MaterialTheme.typography.bodyMedium)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ShapeIcon(
+                    Icons.Filled.Home,
+                    shape = MaterialShapes.Cookie9Sided,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    size = 56.dp,
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(home.name, style = MaterialTheme.typography.titleLargeEmphasized)
+                    val place = locationLine(home)
+                    if (place.isNotBlank()) {
+                        Text(place, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (home.phone.isNotBlank()) IconButton(onClick = onCall) { Icon(Icons.Filled.Phone, "Ligar") }
-                    if (fullAddress(home).isNotBlank()) IconButton(onClick = onMap) { Icon(Icons.Filled.LocationOn, "Ver no mapa") }
-                    IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, "Editar") }
-                    IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, "Apagar") }
-                }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onToggle(); onClose() }) { Text(if (selected) "Retirar da seleção" else "Selecionar") }
-        },
-        dismissButton = { TextButton(onClick = onClose) { Text("Fechar") } },
-    )
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                if (home.phone.isNotBlank()) QuickAction(Icons.Filled.Phone, "Ligar", onCall)
+                if (fullAddress(home).isNotBlank()) QuickAction(Icons.Filled.LocationOn, "Ver no mapa", onMap)
+                QuickAction(Icons.Filled.Edit, "Editar", onEdit)
+                QuickAction(Icons.Filled.Delete, "Apagar") { confirmDelete = true }
+            }
+            Spacer(Modifier.height(12.dp))
+            val facts = listOf(
+                "Entidade" to home.owner,
+                "Natureza" to home.legalForm,
+                "Morada" to fullAddress(home),
+                "Freguesia" to home.parish,
+                "Distrito" to home.district,
+                "Capacidade" to home.capacity,
+                "Telefone" to home.phone,
+                "Email" to home.email.ifBlank { "— (pode acrescentar em Editar)" },
+            ).filter { it.second.isNotBlank() }
+            facts.forEachIndexed { i, (label, value) ->
+                SegmentedListItem(
+                    colors = segmentedColors(),
+                    shapes = segmentedShapes(i, facts.size),
+                    overlineContent = { Text(label) },
+                ) { Text(value) }
+            }
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = { onToggle(); onClose() },
+                modifier = Modifier.fillMaxWidth().heightIn(min = ButtonDefaults.MediumContainerHeight),
+                shapes = ButtonDefaults.shapesFor(ButtonDefaults.MediumContainerHeight),
+                contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MediumContainerHeight),
+            ) {
+                Text(
+                    if (selected) "Retirar da seleção" else "Selecionar",
+                    style = ButtonDefaults.textStyleFor(ButtonDefaults.MediumContainerHeight),
+                )
+            }
+        }
+    }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
@@ -394,6 +484,20 @@ private fun CareHomeDetails(
             confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Apagar") } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancelar") } },
         )
+    }
+}
+
+/** Round tonal button with a label underneath (like the actions in Contacts). */
+@Composable
+private fun QuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        FilledTonalIconButton(
+            onClick = onClick,
+            modifier = Modifier.size(IconButtonDefaults.mediumContainerSize(IconButtonDefaults.IconButtonWidthOption.Wide)),
+            shapes = IconButtonDefaults.shapes(),
+        ) { Icon(icon, label) }
+        Spacer(Modifier.height(6.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium)
     }
 }
 
@@ -411,6 +515,7 @@ private fun CareHomeEditor(home: CareHome, onClose: () -> Unit, onSave: (CareHom
             singleLine = true,
             isError = isError,
             keyboardOptions = KeyboardOptions(keyboardType = type),
+            shape = MaterialTheme.shapes.large,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -418,7 +523,7 @@ private fun CareHomeEditor(home: CareHome, onClose: () -> Unit, onSave: (CareHom
         onDismissRequest = onClose,
         title = { Text(if (home.id.isBlank()) "Adicionar lar" else "Editar lar") },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 field("Nome *", current.name) { current.copy(name = it) }
                 field("Email", current.email, KeyboardType.Email, invalidEmail) { current.copy(email = it) }
                 field("Telefone", current.phone, KeyboardType.Phone) { current.copy(phone = it) }
