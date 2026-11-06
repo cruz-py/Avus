@@ -19,8 +19,26 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Release key, kept outside the repo: set AVUS_RELEASE_STORE_FILE, AVUS_RELEASE_STORE_PASSWORD and
+    // AVUS_RELEASE_KEY_ALIAS in ~/.gradle/gradle.properties. Without them, release builds are unsigned.
+    // Every update must be signed with the same key, so keep a backup of the keystore and its password.
+    val releaseStoreFile = providers.gradleProperty("AVUS_RELEASE_STORE_FILE").orNull
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = providers.gradleProperty("AVUS_RELEASE_STORE_PASSWORD").get()
+                keyAlias = providers.gradleProperty("AVUS_RELEASE_KEY_ALIAS").get()
+                // PKCS12 keystores (keytool's default) use the store password for the key too.
+                keyPassword = providers.gradleProperty("AVUS_RELEASE_KEY_PASSWORD")
+                    .orElse(providers.gradleProperty("AVUS_RELEASE_STORE_PASSWORD")).get()
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (releaseStoreFile != null) signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = true
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
