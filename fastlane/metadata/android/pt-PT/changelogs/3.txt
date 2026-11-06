@@ -1,1 +1,4 @@
-• Os filtros dos lares passam para uma segunda linha em vez de ficarem cortados no limite do ecrã.
+Primeira versão do Avus no Google Play.
+• Encontre lares de Portugal continental na lista ou no mapa, perto da morada do utente.
+• Preencha a ficha do utente e junte os documentos uma só vez.
+• Prepare a carta e o email para vários lares e acompanhe a resposta de cada um.
