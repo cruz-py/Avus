@@ -1,0 +1,2 @@
+• Botão "Preparar envio" mais pequeno, para tapar menos a lista de lares.
+• O ecrã dos lares chama-se agora apenas "Lares".
