@@ -31,6 +31,20 @@ is computed on the phone from postal codes, without sending the user's address a
 - `tools/cartasocial/` — script that builds the national ERPI CSV from cartasocial.pt. The app bundles
   that CSV from `app/src/main/assets/`, but it is not kept in git: generate it before a release
   (see `tools/cartasocial/README.md`)
+- `branding/` — logo sources (`avus-icon.svg`, `avus-mark.svg`) and the 512 px store icon; the
+  app's colour schemes are generated from the icon's navy (#1F4E8C)
+
+## Release
+
+1. Refresh the ERPI list if it is old (`tools/cartasocial/README.md`).
+2. Raise `versionCode` and `versionName` in `app/build.gradle.kts`.
+3. `./gradlew clean assembleRelease`. Signing reads `AVUS_RELEASE_STORE_FILE`,
+   `AVUS_RELEASE_STORE_PASSWORD` and `AVUS_RELEASE_KEY_ALIAS` from `~/.gradle/gradle.properties`
+   (without them the APKs are unsigned). Every update must use the same key.
+4. Try the release build (R8) on a device or emulator before publishing.
+5. Tag `vX.Y` here, and publish a release on [cruz-py/Avus-app](https://github.com/cruz-py/Avus-app/releases)
+   with `Avus-X.Y-arm64-v8a.apk`, `Avus-X.Y-armeabi-v7a.apk`, `Avus-X.Y-universal.apk` and their
+   `SHA256SUMS.txt`; release notes in pt-PT.
 
 Code layout (`app/src/main/java/pt/avus/app/`):
 
