@@ -5,9 +5,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -190,10 +190,10 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpen
                     leadingIcon = { Icon(Icons.Filled.LocationOn, null, Modifier.size(FilterChipDefaults.IconSize)) },
                 )
             }
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = ScreenPadding),
+            // Wraps instead of scrolling sideways, so every filter stays visible on narrow screens.
+            FlowRow(
+                Modifier.fillMaxWidth().padding(horizontal = ScreenPadding),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (reference != null) {
                     val radii = listOf(5, 10, 25, 50)
