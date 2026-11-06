@@ -47,6 +47,8 @@ data class AppState(
     val isImporting: Boolean = false,
     /** Collection date (yyyy-MM-dd) of the bundled official list, if it is installed. */
     val officialListDate: String? = null,
+    /** The official list is bundled in this build (it is generated, not kept in git). */
+    val officialListAvailable: Boolean = false,
 ) {
     val selectedHomes: List<CareHome> get() = homes.filter { it.id in selectedIds }
     val attachedDocuments: List<Document> get() = documents.filter { it.isAttached }
@@ -82,6 +84,7 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
                 contacts = repo.loadContacts(),
                 customLetter = repo.loadCustomLetter(),
                 officialListDate = repo.loadOfficialListState()?.takeUnless { it.removed }?.date,
+                officialListAvailable = repo.hasAsset(OfficialList.CSV_ASSET) && repo.hasAsset(OfficialList.META_ASSET),
             )
             installOfficialList(force = false)
         }
@@ -154,6 +157,7 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Loads the official ERPI list bundled with the app (first launch, app update, or "restore"). */
     private suspend fun installOfficialList(force: Boolean) {
+        if (!_state.value.officialListAvailable) return // build without the generated list
         val meta = OfficialList.parseMeta(repo.readAsset(OfficialList.META_ASSET).decodeToString())
         if (!force && !OfficialList.shouldInstall(repo.loadOfficialListState(), meta)) return
         _state.update { it.copy(isImporting = true) }

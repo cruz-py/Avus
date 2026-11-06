@@ -150,7 +150,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
                         DropdownMenuItem(text = { Text("Importar lista (CSV)") }, onClick = { menu = false; openImport() })
                         DropdownMenuItem(text = { Text("Adicionar lar manualmente") }, onClick = { menu = false; homeToEdit = CareHome("", "") })
                         DropdownMenuItem(text = { Text("Onde obter a lista oficial") }, onClick = { menu = false; showHelp = true })
-                        if (state.homes.none { it.official }) {
+                        if (state.officialListAvailable && state.homes.none { it.official }) {
                             DropdownMenuItem(text = { Text("Restaurar lista oficial") }, onClick = { menu = false; vm.restoreOfficialList() })
                         }
                         if (state.homes.any { !it.manual }) {
@@ -197,10 +197,12 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
                     "Carregue a lista oficial de Estruturas Residenciais para Pessoas Idosas (Carta Social), " +
                         "importe outra lista em CSV ou adicione lares manualmente.",
                 ) {
-                    Button(onClick = { vm.restoreOfficialList() }, enabled = !state.isImporting, shapes = ButtonDefaults.shapes()) {
-                        Text("Carregar lista oficial")
+                    if (state.officialListAvailable) {
+                        Button(onClick = { vm.restoreOfficialList() }, enabled = !state.isImporting, shapes = ButtonDefaults.shapes()) {
+                            Text("Carregar lista oficial")
+                        }
+                        Spacer(Modifier.padding(4.dp))
                     }
-                    Spacer(Modifier.padding(4.dp))
                     OutlinedButton(onClick = { openImport() }, shapes = ButtonDefaults.shapes()) { Text("Importar lista (CSV)") }
                     Spacer(Modifier.padding(4.dp))
                     OutlinedButton(onClick = { homeToEdit = CareHome("", "") }, shapes = ButtonDefaults.shapes()) {

@@ -22,3 +22,7 @@ keystore.properties
 /*.csv
 /*.xlsx
 /dados/
+
+# National ERPI list (public Carta Social data): bundled into builds but not versioned.
+# Generate it with tools/cartasocial/scrape_erpi.py (see tools/cartasocial/README.md).
+/app/src/main/assets/erpi_portugal.*

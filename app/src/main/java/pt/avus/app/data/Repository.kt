@@ -88,6 +88,8 @@ class Repository(private val context: Context) {
 
     suspend fun saveReminded(reminded: Map<String, Long>) = writeFile("reminders.json", JSONObject(reminded).toString())
 
+    fun hasAsset(name: String): Boolean = context.assets.list("")?.contains(name) == true
+
     suspend fun readAsset(name: String): ByteArray = withContext(Dispatchers.IO) {
         context.assets.open(name).use { it.readBytes() }
     }

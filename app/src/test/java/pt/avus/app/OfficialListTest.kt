@@ -3,6 +3,7 @@ package pt.avus.app
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import pt.avus.app.data.CareHome
 import pt.avus.app.data.CsvImporter
@@ -52,6 +53,8 @@ class OfficialListTest {
     /** The CSV shipped in the app must import completely (one home per Carta Social facility). */
     @Test fun bundledListImportsCompletely() {
         val assets = File("src/main/assets")
+        // The list is generated (not in git); skip on checkouts that have not generated it.
+        assumeTrue(File(assets, OfficialList.CSV_ASSET).exists() && File(assets, OfficialList.META_ASSET).exists())
         val meta = OfficialList.parseMeta(File(assets, OfficialList.META_ASSET).readText())
         val result = CsvImporter.importBytes(File(assets, OfficialList.CSV_ASSET).readBytes())
         assertEquals(meta.count, result.homes.size)

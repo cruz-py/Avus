@@ -11,7 +11,11 @@ python3 scrape_erpi.py                         # all of mainland Portugal (~45â€
 python3 scrape_erpi.py --district Lisboa       # a single district
 ```
 
-**Refreshing the list shipped with the app** (before a release):
+**The list shipped with the app** lives in `app/src/main/assets/erpi_portugal.csv` (+ `.properties`).
+It is **not kept in git** (see `.gitignore`): generate it before building a release. A build without
+it still works; it simply has no official list and hides the "Carregar/Restaurar lista oficial" options.
+
+**Refreshing it** (before a release):
 
 ```bash
 rm -rf cache/lists                              # re-list homes (new/closed ones); keep cache/details to reuse pages

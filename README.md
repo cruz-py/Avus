@@ -20,7 +20,9 @@ All data stays on the phone (backups disabled). Nothing is sent until the user t
 - Kotlin + Jetpack Compose (Material 3), minSdk 26
 - `./gradlew assembleDebug` — build
 - `./gradlew testDebugUnitTest` — unit tests (CSV importer, letter generator, storage migration)
-- `tools/cartasocial/` — script that builds the national ERPI CSV from cartasocial.pt
+- `tools/cartasocial/` — script that builds the national ERPI CSV from cartasocial.pt. The app bundles
+  that CSV from `app/src/main/assets/`, but it is not kept in git: generate it before a release
+  (see `tools/cartasocial/README.md`)
 
 Code layout (`app/src/main/java/pt/avus/app/`):
 
