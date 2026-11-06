@@ -98,7 +98,9 @@ fun ResidentScreen(state: AppState, vm: AvusViewModel, onOpenSettings: () -> Uni
                     ToggleButton(
                         checked = selectedTab == i,
                         onCheckedChange = { selectedTab = i },
-                        modifier = Modifier.weight(1f),
+                        // Width follows the label (plus room for the padding), so "Documentos (5/8)" fits
+                        // on a normal phone instead of sharing a third of the row with "Ficha".
+                        modifier = Modifier.weight(label.length + 6f),
                         shapes = when (i) {
                             0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
                             labels.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
@@ -107,7 +109,7 @@ fun ResidentScreen(state: AppState, vm: AvusViewModel, onOpenSettings: () -> Uni
                         // Unchecked half on the bright surface, so it stands out from the tonal page.
                         colors = ToggleButtonDefaults.colors(containerColor = contentSurface),
                     ) {
-                        // One line: the selected label scrolls if it does not fit ("Documentos (0/11)").
+                        // One line: the selected label scrolls if it still does not fit (small screen, large font) ("Documentos (0/11)").
                         Text(
                             label,
                             maxLines = 1,
