@@ -17,7 +17,7 @@ data class ResultadoImportacao(
 class ErroImportacao(mensagem: String) : Exception(mensagem)
 
 /**
- * Lê um CSV com equipamentos sociais (ex.: o exportado da Carta Social / dados.gov.pt)
+ * Lê um CSV com equipamentos sociais (ex.: o gerado por tools/cartasocial a partir da Carta Social, ou dados abertos municipais)
  * e extrai as ERPI. As colunas são reconhecidas pelo nome do cabeçalho, por isso funciona
  * com variações de formato (separador ";" ou ",", UTF-8 ou Windows-1252, colunas noutra ordem).
  */

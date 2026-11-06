@@ -70,7 +70,6 @@ import pt.avus.app.data.Lar
 import pt.avus.app.data.normalizar
 
 private const val URL_CARTA_SOCIAL = "https://www.cartasocial.pt"
-private const val URL_DADOS_GOV = "https://dados.gov.pt/pt/datasets/carta-social-equipamentos-e-respostas-sociais/"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -242,22 +241,29 @@ fun EcraLares(estado: EstadoApp, vm: AvusViewModel, irParaEnvio: () -> Unit) {
     if (ajuda) {
         AlertDialog(
             onDismissRequest = { ajuda = false },
-            title = { Text("Onde obter a lista oficial") },
+            title = { Text("Onde obter a lista de lares") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         "A lista oficial dos lares licenciados é a Carta Social, do Ministério do Trabalho, " +
-                            "Solidariedade e Segurança Social."
+                            "Solidariedade e Segurança Social. O portal permite pesquisar, mas não descarregar a lista, " +
+                            "por isso há duas formas de trazer os lares para a app:"
                     )
                     Text(
-                        "1. No portal de dados abertos (dados.gov.pt), abra o conjunto \"Carta Social – Equipamentos " +
-                            "e Respostas Sociais\" e descarregue o ficheiro CSV.\n" +
-                            "2. Se o ficheiro vier em Excel (.xlsx), abra-o e use \"Guardar como… CSV\".\n" +
-                            "3. Aqui na app, escolha \"Importar lista (CSV)\"."
+                        "• Com um ficheiro CSV — por exemplo, a lista nacional das ERPI recolhida da Carta Social, " +
+                            "ou os dados abertos de um município (como o portal dadosabertos.cascais.pt). " +
+                            "Escolha \"Importar lista (CSV)\": a app reconhece as colunas automaticamente e guarda " +
+                            "apenas os lares. Se o ficheiro vier em Excel (.xlsx), abra-o e use \"Guardar como… CSV\"."
                     )
                     Text(
-                        "A app reconhece as colunas automaticamente e guarda apenas as Estruturas Residenciais " +
-                            "para Pessoas Idosas. Pode importar vários ficheiros (por exemplo, um por distrito)."
+                        "• À mão — na Carta Social, pesquise \"Pessoas Idosas\" → \"Estrutura Residencial para " +
+                            "Pessoas Idosas\" → distrito, abra cada lar que lhe interesse e copie os contactos com " +
+                            "\"Adicionar lar manualmente\"."
+                    )
+                    Text(
+                        "Os dados municipais podem incluir centros de dia e apoio domiciliário: confirme a lista " +
+                            "antes de enviar. Açores e Madeira não estão na Carta Social.",
+                        style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
                         "Nem todos os lares têm email na Carta Social. Pode acrescentá-lo à mão, abrindo o lar e escolhendo \"Editar\".",
@@ -265,13 +271,8 @@ fun EcraLares(estado: EstadoApp, vm: AvusViewModel, irParaEnvio: () -> Unit) {
                     )
                 }
             },
-            confirmButton = { TextButton(onClick = { Envio.abrirUrl(context, URL_DADOS_GOV) }) { Text("Abrir dados.gov.pt") } },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = { Envio.abrirUrl(context, URL_CARTA_SOCIAL) }) { Text("Carta Social") }
-                    TextButton(onClick = { ajuda = false }) { Text("Fechar") }
-                }
-            },
+            confirmButton = { TextButton(onClick = { Envio.abrirUrl(context, URL_CARTA_SOCIAL) }) { Text("Abrir Carta Social") } },
+            dismissButton = { TextButton(onClick = { ajuda = false }) { Text("Fechar") } },
         )
     }
 

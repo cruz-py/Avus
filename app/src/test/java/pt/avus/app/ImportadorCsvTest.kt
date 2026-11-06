@@ -81,4 +81,21 @@ class ImportadorCsvTest {
         assertEquals("Cascais" to "Lisboa", ImportadorCsv.concelhoDaFreguesia("São Domingos de Rana"))
         assertEquals(null, ImportadorCsv.concelhoDaFreguesia("Arroios"))
     }
+
+    @Test fun importaCsvDoRecolhedorCartaSocial() {
+        // Cabeçalho e linha reais gerados por tools/cartasocial/recolher_erpi.py
+        val texto = "\uFEFFDistrito;Concelho;Freguesia;Nome do Equipamento;Entidade Proprietária;Natureza Jurídica;Resposta Social;Morada;Código Postal;Localidade;Telefone;Email;Capacidade;Utentes;Última atualização;ID Carta Social\n" +
+            "Portalegre;Alter do Chão;Cunheira;LAR NOSSA SENHORA DA CONCEIÇÃO;GRUPO SOCIAL DE CUNHEIRA;Associação de Solidariedade Social;Estrutura Residencial para Pessoas Idosas ( Lar de Idosos e Residência);LARGO SANTO AMARO, 14 - CUNHEIRA;7440-251;Cunheira;245697157;gscunheira@sapo.pt;40;31;2026-09-06;1806\n"
+        val r = ImportadorCsv.importarTexto(texto)
+        assertTrue(r.filtrouPorResposta)
+        val lar = r.lares.single()
+        assertEquals("LAR NOSSA SENHORA DA CONCEIÇÃO", lar.nome)
+        assertEquals("GRUPO SOCIAL DE CUNHEIRA", lar.entidade)
+        assertEquals("Alter do Chão", lar.concelho)
+        assertEquals("Portalegre", lar.distrito)
+        assertEquals("Cunheira", lar.freguesia)
+        assertEquals("7440-251", lar.codigoPostal)
+        assertEquals("gscunheira@sapo.pt", lar.email)
+        assertEquals("40", lar.capacidade)
+    }
 }
