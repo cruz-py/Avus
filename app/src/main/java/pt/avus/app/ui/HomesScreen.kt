@@ -58,7 +58,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumExtendedFloatingActionButton
+import androidx.compose.material3.SmallExtendedFloatingActionButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -259,9 +259,9 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpen
         },
         floatingActionButton = {
             AnimatedVisibility(state.selectedIds.isNotEmpty(), enter = scaleIn(), exit = scaleOut()) {
-                MediumExtendedFloatingActionButton(onClick = goToSend) {
+                SmallExtendedFloatingActionButton(onClick = goToSend) {
                     Icon(Icons.AutoMirrored.Filled.Send, null)
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text("Preparar envio (${state.selectedIds.size})")
                 }
             }
