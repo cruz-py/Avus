@@ -19,6 +19,9 @@ more than twice the short one, and the raw captures are 1280×2856. They use fic
 homes shown in "Respostas" are made up, the others come from the Carta Social.
 
 The upload is the App Bundle: `./gradlew bundleRelease` → `app/build/outputs/bundle/release/app-release.aab`.
+Each version is then copied by hand to `dist/` (not versioned): `dist/Avus-X.Y.Z.aab` for Play and
+`dist/Avus-X.Y.Z-{arm64-v8a,armeabi-v7a,universal}.apk`, the files attached to the GitHub release
+(`gh release create vX.Y.Z -R cruz-py/Avus-app dist/Avus-X.Y.Z-*.apk SHA256SUMS.txt`).
 
 ## Before the first upload
 
