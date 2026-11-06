@@ -66,9 +66,12 @@ android {
     // MapLibre ships native code for each CPU type (~13 MB each). Play delivers only the right one from
     // an App Bundle (bundleRelease); for APKs, build one per CPU type plus a universal one.
     // 32-bit x86 is left out: only old emulators use it.
+    // AGP refuses to build an App Bundle with APK splits on (issuetracker 402800800), so they are
+    // switched off when a bundle task is requested; Play splits the bundle by CPU type itself.
+    val buildingBundle = gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) }
     splits {
         abi {
-            isEnable = true
+            isEnable = !buildingBundle
             reset()
             include("arm64-v8a", "armeabi-v7a", "x86_64")
             isUniversalApk = true

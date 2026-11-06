@@ -1,0 +1,29 @@
+Precisa de encontrar um lar para um familiar? O Avus ajuda a pedir vaga em vários lares (Estruturas Residenciais para Pessoas Idosas, ERPI) de uma só vez, e a acompanhar as respostas de cada um.
+
+Escolha os lares, preencha a ficha uma vez, e a app prepara a carta de pré-inscrição e o email, com os documentos em anexo. Os emails são enviados por si, a partir da sua conta de email, e os lares respondem-lhe diretamente.
+
+ENCONTRAR LARES
+• Lista oficial incluída: todas as ERPI licenciadas de Portugal continental, segundo a Carta Social (DGSSS).
+• Lista ou mapa, com pesquisa e filtros por distrito, concelho e "Com vagas".
+• Ocupação de cada lar (utentes e capacidade), tal como indicada à Carta Social.
+• "Perto de…": ordena os lares pela distância à morada do utente, do familiar, a um código postal ou a um concelho.
+• Acrescente lares que não estejam na lista.
+
+PEDIR VAGA
+• Ficha do utente (com Cartão de Cidadão ou Bilhete de Identidade) e do familiar que contacta os lares.
+• Lista dos documentos habitualmente pedidos, com anexos em PDF ou fotografia.
+• Carta de pré-inscrição gerada automaticamente, que pode editar, também em PDF.
+• Um email para todos os lares escolhidos (em Bcc) ou um email para cada lar. A app abre a sua app de email já preenchida: só é enviado quando carregar em "Enviar".
+
+ACOMPANHAR AS RESPOSTAS
+• Estado de cada lar: enviado, respondeu, visita marcada, lista de espera, vaga disponível, sem vaga…
+• Partilhe a resposta de um lar (um email, uma mensagem) para o Avus, que a regista no lar certo.
+• Depois de telefonar a um lar, a app pergunta como correu.
+• Lembrete quando um lar não responde há mais de uma semana.
+
+PRIVADO
+• Sem contas, sem anúncios, sem rastreio.
+• Os seus dados e documentos ficam apenas no telemóvel. Pode exportar uma cópia de segurança para onde quiser.
+
+IMPORTANTE
+O Avus não é um serviço de colocação nem intermediário, e não tem qualquer ligação aos lares nem à Segurança Social. A ocupação e os contactos dos lares são os indicados à Carta Social e podem estar desatualizados: confirme sempre com o lar. Açores e Madeira não estão incluídos.

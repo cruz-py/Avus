@@ -45,6 +45,8 @@ is computed on the phone from postal codes, without sending the user's address a
 5. Tag `vX.Y` here, and publish a release on [cruz-py/Avus-app](https://github.com/cruz-py/Avus-app/releases)
    with `Avus-X.Y-arm64-v8a.apk`, `Avus-X.Y-armeabi-v7a.apk`, `Avus-X.Y-universal.apk` and their
    `SHA256SUMS.txt`; release notes in pt-PT.
+6. Google Play: upload `./gradlew bundleRelease` (the App Bundle) and add
+   `fastlane/metadata/android/pt-PT/changelogs/<versionCode>.txt`; see `fastlane/PLAY_CONSOLE.md`.
 
 Code layout (`app/src/main/java/pt/avus/app/`):
 
