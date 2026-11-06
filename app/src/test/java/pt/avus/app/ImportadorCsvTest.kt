@@ -55,4 +55,30 @@ class ImportadorCsvTest {
         assertFalse(ImportadorCsv.eErpi("Lar Residencial"))
         assertFalse(ImportadorCsv.eErpi("Serviço de Apoio Domiciliário"))
     }
+
+    @Test fun importaFormatoCartaSocialMunicipal() {
+        val texto = "\uFEFFFID,designacao,freguesia,local,rua,numero_policia,codigo_postal,telefone,email,d_inf_juv,d_pes_idos,entidade_gestora\n" +
+            "carta_social.1,Creche X,Alcabideche,Cobre,Rua A,,2750-571 Cascais,,,Sim,Não,Empresa X\n" +
+            "carta_social.2,Lar Costa do Sol,Parede,Parede,Rua B,298,2775-001 Parede,214604580 / 919594878,geral@costa.pt,Não,Sim,VALE &amp; GONÇALVES LDA\n" +
+            "carta_social.3,Centro de Convívio &quot;Os Vinhais&quot;,Cascais,Cascais,Rua C,0,2750-001,,dep@scmc.pt,Não,Sim,SCMC\n"
+        val r = ImportadorCsv.importarTexto(texto)
+        assertTrue(r.filtrouPorResposta)
+        assertEquals(1, r.ignoradasOutraResposta)
+        assertEquals(listOf("Lar Costa do Sol", "Centro de Convívio \"Os Vinhais\""), r.lares.map { it.nome })
+        val lar = r.lares[0]
+        assertEquals("Rua B, 298", lar.morada)
+        assertEquals("Parede", lar.localidade)
+        assertEquals("VALE & GONÇALVES LDA", lar.entidade)
+        assertEquals("214604580", lar.telefone)
+        assertEquals("Rua C", r.lares[1].morada)
+        assertEquals("Cascais", lar.concelho)
+        assertEquals("Lisboa", lar.distrito)
+    }
+
+    @Test fun deduzConcelhoPelaFreguesia() {
+        assertEquals("Cascais" to "Lisboa", ImportadorCsv.concelhoDaFreguesia("U.F. Cascais e Estoril"))
+        assertEquals("Cascais" to "Lisboa", ImportadorCsv.concelhoDaFreguesia("União das Freguesias de Carcavelos e Parede"))
+        assertEquals("Cascais" to "Lisboa", ImportadorCsv.concelhoDaFreguesia("São Domingos de Rana"))
+        assertEquals(null, ImportadorCsv.concelhoDaFreguesia("Arroios"))
+    }
 }

@@ -31,6 +31,7 @@ object ImportadorCsv {
         CODIGO_POSTAL("Código postal", listOf("codigo postal", "cod postal", "cod. postal", "cp")),
         NOME("Nome", listOf("nome do equipamento", "designacao do equipamento", "equipamento", "designacao", "denominacao", "nome")),
         MORADA("Morada", listOf("morada", "endereco", "rua")),
+        NUMERO("Número", listOf("numero policia", "numero de policia", "n policia", "numero porta")),
         LOCALIDADE("Localidade", listOf("localidade", "local")),
         FREGUESIA("Freguesia", listOf("freguesia")),
         CONCELHO("Concelho", listOf("concelho", "municipio")),
@@ -38,6 +39,9 @@ object ImportadorCsv {
         TELEFONE("Telefone", listOf("telefone", "telef", "contacto telefonico", "telemovel", "tel")),
         EMAIL("Email", listOf("email", "e-mail", "e mail", "correio eletronico", "correio electronico", "mail")),
         CAPACIDADE("Capacidade", listOf("capacidade", "lotacao")),
+        // Formato da Carta Social dos dados abertos municipais (ex.: Cascais): sem coluna de
+        // resposta social, mas com colunas Sim/Não por destinatário ("d_pes_idos" = pessoas idosas).
+        IDOSOS("Pessoas idosas", listOf("d pes idos", "pessoas idosas")),
     }
 
     private val regexEmail = Regex("[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}")
@@ -62,16 +66,19 @@ object ImportadorCsv {
             )
         }
 
-        val filtrar = Coluna.RESPOSTA in mapa
+        val filtrarResposta = Coluna.RESPOSTA in mapa
+        val filtrarIdosos = !filtrarResposta && Coluna.IDOSOS in mapa
         var ignoradasResposta = 0
         var ignoradasNome = 0
         val porId = LinkedHashMap<String, Lar>()
         val dados = linhas.drop(indiceCabecalho + 1).filter { l -> l.any { it.isNotBlank() } }
 
         for (linha in dados) {
-            fun valor(c: Coluna) = mapa[c]?.let { linha.getOrNull(it) }?.trim().orEmpty()
+            fun valor(c: Coluna) = mapa[c]?.let { linha.getOrNull(it) }?.let(::decodificarEntidades)?.trim().orEmpty()
 
-            if (filtrar && !eErpi(valor(Coluna.RESPOSTA))) {
+            if ((filtrarResposta && !eErpi(valor(Coluna.RESPOSTA))) ||
+                (filtrarIdosos && normalizar(valor(Coluna.IDOSOS)) !in setOf("sim", "s", "true", "1"))
+            ) {
                 ignoradasResposta++
                 continue
             }
@@ -80,8 +87,11 @@ object ImportadorCsv {
                 ignoradasNome++
                 continue
             }
-            val morada = valor(Coluna.MORADA)
-            val concelho = valor(Coluna.CONCELHO)
+            val numero = valor(Coluna.NUMERO).takeUnless { it.isBlank() || it == "0" }
+            val morada = listOfNotNull(valor(Coluna.MORADA).ifBlank { null }, numero).joinToString(", ")
+            // Ficheiros municipais não trazem concelho/distrito: deduz pela freguesia.
+            val local = concelhoDaFreguesia(valor(Coluna.FREGUESIA))
+            val concelho = valor(Coluna.CONCELHO).ifBlank { local?.first.orEmpty() }
             val id = Lar.gerarId(nome, morada, concelho)
             val lar = Lar(
                 id = id,
@@ -93,7 +103,7 @@ object ImportadorCsv {
                 localidade = valor(Coluna.LOCALIDADE),
                 freguesia = valor(Coluna.FREGUESIA),
                 concelho = concelho,
-                distrito = valor(Coluna.DISTRITO),
+                distrito = valor(Coluna.DISTRITO).ifBlank { local?.second.orEmpty() },
                 telefone = limparTelefone(valor(Coluna.TELEFONE)),
                 email = extrairEmail(valor(Coluna.EMAIL)),
                 capacidade = valor(Coluna.CAPACIDADE),
@@ -108,7 +118,7 @@ object ImportadorCsv {
             ignoradasOutraResposta = ignoradasResposta,
             ignoradasSemNome = ignoradasNome,
             colunasReconhecidas = mapa.keys.sortedBy { it.ordinal }.map { it.rotulo },
-            filtrouPorResposta = filtrar,
+            filtrouPorResposta = filtrarResposta || filtrarIdosos,
         )
     }
 
@@ -121,6 +131,37 @@ object ImportadorCsv {
             "lar para idosos" in r ||
             "lar de terceira idade" in r
     }
+
+    /**
+     * Freguesia (normalizada) → (concelho, distrito), para ficheiros sem estas colunas.
+     * Ao importar dados de outro portal municipal, basta acrescentar aqui as suas freguesias.
+     */
+    private val freguesias: Map<String, Pair<String, String>> = mapOf(
+        "cascais e estoril" to ("Cascais" to "Lisboa"),
+        "carcavelos e parede" to ("Cascais" to "Lisboa"),
+        "alcabideche" to ("Cascais" to "Lisboa"),
+        "sao domingos de rana" to ("Cascais" to "Lisboa"),
+        // Freguesias anteriores à reorganização de 2013, ainda usadas em ficheiros mais antigos.
+        "cascais" to ("Cascais" to "Lisboa"),
+        "estoril" to ("Cascais" to "Lisboa"),
+        "carcavelos" to ("Cascais" to "Lisboa"),
+        "parede" to ("Cascais" to "Lisboa"),
+    )
+
+    fun concelhoDaFreguesia(freguesia: String): Pair<String, String>? {
+        val f = normalizar(freguesia)
+            .replace(Regex("^(u\\.\\s*f\\.|uf|uniao (das|de) freguesias( de| do| da| dos| das)?)\\s*"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        return freguesias[f]
+    }
+
+    private val entidadesHtml = mapOf("&quot;" to "\"", "&amp;" to "&", "&apos;" to "'", "&#39;" to "'", "&lt;" to "<", "&gt;" to ">", "&nbsp;" to " ")
+
+    /** Alguns portais exportam o texto com entidades HTML (ex.: "&quot;Os Vinhais&quot;"). */
+    fun decodificarEntidades(texto: String): String =
+        if ('&' !in texto) texto
+        else entidadesHtml.entries.fold(texto) { t, (e, c) -> t.replace(e, c) }
 
     fun extrairEmail(texto: String): String = regexEmail.find(texto)?.value?.lowercase().orEmpty()
 
