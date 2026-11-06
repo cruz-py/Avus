@@ -1,5 +1,11 @@
 package pt.avus.app.ui
 
+import android.Manifest
+import android.content.Intent
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +29,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Info
@@ -32,6 +39,7 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,6 +50,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedListItem
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -57,6 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.RoundedPolygon
@@ -65,6 +75,7 @@ import pt.avus.app.data.Contact
 import pt.avus.app.data.ContactStatus
 import pt.avus.app.letter.LetterGenerator
 import pt.avus.app.letter.Sender
+import pt.avus.app.reminders.ReplyReminderWorker
 import java.util.concurrent.TimeUnit
 
 @Composable
@@ -76,6 +87,30 @@ fun RepliesScreen(state: AppState, vm: AvusViewModel, goToHomes: () -> Unit) {
     val contacts = state.contacts.sortedByDescending { it.updatedAt }
     val visibleContacts = contacts.filter { statusFilter == null || it.status == statusFilter }
     val countsByStatus = contacts.groupingBy { it.status }.eachCount()
+
+    // Reminders need notification permission (Android 13+); re-checked when coming back from Settings.
+    var canNotify by remember { mutableStateOf(ReplyReminderWorker.canNotify(context)) }
+    var askedPermission by rememberSaveable { mutableStateOf(false) }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        canNotify = ReplyReminderWorker.canNotify(context)
+    }
+    LifecycleResumeEffect(Unit) {
+        canNotify = ReplyReminderWorker.canNotify(context)
+        onPauseOrDispose { }
+    }
+    fun enableReminders() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedPermission) {
+            askedPermission = true
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            // Already refused once (or notifications switched off): the system settings are the only way.
+            runCatching {
+                context.startActivity(
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                )
+            }
+        }
+    }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
@@ -105,6 +140,11 @@ fun RepliesScreen(state: AppState, vm: AvusViewModel, goToHomes: () -> Unit) {
             contentPadding = PaddingValues(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
         ) {
+            if (!canNotify) {
+                item(key = "reminders") {
+                    ReminderCard(onEnable = ::enableReminders, modifier = Modifier.padding(horizontal = ScreenPadding).padding(bottom = 12.dp))
+                }
+            }
             item(key = "filters") {
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = ScreenPadding).padding(bottom = 8.dp),
@@ -125,7 +165,7 @@ fun RepliesScreen(state: AppState, vm: AvusViewModel, goToHomes: () -> Unit) {
                     count = visibleContacts.size,
                     onStatusChange = { vm.updateContact(c.copy(status = it)) },
                     onEditNotes = { editing = c },
-                    onCall = { home?.let { Sender.dial(context, it.phone) } },
+                    onCall = { home?.let { vm.callStarted(it.id); Sender.dial(context, it.phone) } },
                     onEmail = {
                         home?.let {
                             Sender.openEmail(context, listOf(it.email), emptyList(), "Re: " + LetterGenerator.subject(state.profile), "", emptyList())
@@ -173,6 +213,33 @@ fun RepliesScreen(state: AppState, vm: AvusViewModel, goToHomes: () -> Unit) {
                 },
                 dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancelar") } },
             )
+        }
+    }
+}
+
+@Composable
+private fun ReminderCard(onEnable: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            ShapeIcon(
+                Icons.Filled.Notifications,
+                shape = MaterialShapes.Cookie6Sided,
+                containerColor = MaterialTheme.colorScheme.tertiary,
+                contentColor = MaterialTheme.colorScheme.onTertiary,
+            )
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text("Lembretes", style = MaterialTheme.typography.titleSmallEmphasized)
+                Text(
+                    "Receba um aviso quando um lar não responder há mais de uma semana.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            FilledTonalButton(onClick = onEnable, shapes = ButtonDefaults.shapes()) { Text("Ativar") }
         }
     }
 }

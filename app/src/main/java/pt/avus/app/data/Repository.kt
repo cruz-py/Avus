@@ -78,6 +78,16 @@ class Repository(private val context: Context) {
 
     suspend fun saveOfficialListState(state: OfficialList.State) = writeFile("official_list.txt", state.serialize())
 
+    /** homeId -> the contact's updatedAt it was last reminded about. */
+    suspend fun loadReminded(): Map<String, Long> = withContext(Dispatchers.IO) {
+        val f = File(dir, "reminders.json")
+        if (!f.exists()) return@withContext emptyMap()
+        val o = runCatching { JSONObject(f.readText()) }.getOrNull() ?: return@withContext emptyMap()
+        o.keys().asSequence().associateWith { o.optLong(it) }
+    }
+
+    suspend fun saveReminded(reminded: Map<String, Long>) = writeFile("reminders.json", JSONObject(reminded).toString())
+
     suspend fun readAsset(name: String): ByteArray = withContext(Dispatchers.IO) {
         context.assets.open(name).use { it.readBytes() }
     }

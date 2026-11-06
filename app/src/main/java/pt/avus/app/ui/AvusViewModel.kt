@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import pt.avus.app.letter.Sender
+import pt.avus.app.reminders.ReplyReminderWorker
 import pt.avus.app.letter.LetterGenerator
 import pt.avus.app.data.Contact
 import pt.avus.app.data.Document
@@ -12,6 +13,7 @@ import pt.avus.app.data.ContactStatus
 import pt.avus.app.data.ImportException
 import pt.avus.app.data.CsvImporter
 import pt.avus.app.data.CareHome
+import pt.avus.app.data.FollowUp
 import pt.avus.app.data.OfficialList
 import pt.avus.app.data.Profile
 import pt.avus.app.data.Repository
@@ -22,10 +24,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
+
+/** Asks the user to record a reply: from text shared into the app, or after a phone call. */
+data class ReplyPrompt(val kind: Kind, val homeId: String?, val text: String = "") {
+    enum class Kind { SHARED, CALL }
+}
 
 data class AppState(
     val isLoaded: Boolean = false,
@@ -77,6 +85,7 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
             )
             installOfficialList(force = false)
         }
+        ReplyReminderWorker.schedule(app)
     }
 
     fun messageShown() { _message.value = null }
@@ -313,6 +322,55 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteContact(homeId: String) = saveContacts(_state.value.contacts.filterNot { it.homeId == homeId })
+
+    private val _replyPrompt = MutableStateFlow<ReplyPrompt?>(null)
+    val replyPrompt: StateFlow<ReplyPrompt?> = _replyPrompt.asStateFlow()
+
+    /** Set by a reminder notification; the UI switches to "Respostas" and clears it. */
+    private val _openReplies = MutableStateFlow(false)
+    val openReplies: StateFlow<Boolean> = _openReplies.asStateFlow()
+
+    private var pendingCallHomeId: String? = null
+
+    fun requestRepliesTab() { _openReplies.value = true }
+    fun repliesTabOpened() { _openReplies.value = false }
+
+    /** Text shared into Avus (e.g. a home's email): guess the home and ask how to record it. */
+    fun receiveSharedReply(text: String, subject: String?) {
+        viewModelScope.launch {
+            val s = _state.first { it.isLoaded }
+            val home = FollowUp.matchHome(text, subject, s.homes, s.contacts.map { it.homeId }.toSet())
+            val body = listOfNotNull(subject?.takeIf { it.isNotBlank() }, text.trim()).joinToString("\n").take(1500)
+            _replyPrompt.value = ReplyPrompt(ReplyPrompt.Kind.SHARED, home?.id, body)
+        }
+    }
+
+    /** Called when the user starts a call to a home; on return the app asks how it went. */
+    fun callStarted(homeId: String) {
+        if (_state.value.contacts.any { it.homeId == homeId }) pendingCallHomeId = homeId
+    }
+
+    fun onResume() {
+        val id = pendingCallHomeId ?: return
+        pendingCallHomeId = null
+        if (_replyPrompt.value == null) _replyPrompt.value = ReplyPrompt(ReplyPrompt.Kind.CALL, id)
+    }
+
+    fun dismissReplyPrompt() { _replyPrompt.value = null }
+
+    /** Records a reply: new status and a dated note; creates the contact if the home was not contacted yet. */
+    fun saveReply(homeId: String, status: ContactStatus, note: String) {
+        val now = System.currentTimeMillis()
+        val existing = _state.value.contacts.firstOrNull { it.homeId == homeId }
+        val contact = (existing ?: Contact(homeId, status, now, now)).let {
+            it.copy(status = status, notes = FollowUp.appendNote(it.notes, note, formatDate(now).substring(0, 5)))
+        }
+        updateContact(contact)
+        _replyPrompt.value = null
+        val name = _state.value.homes.firstOrNull { it.id == homeId }?.name ?: "lar"
+        showMessage("Resposta registada: $name")
+        requestRepliesTab()
+    }
 
     private fun saveContacts(list: List<Contact>) {
         _state.update { it.copy(contacts = list) }

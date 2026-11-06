@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -36,6 +37,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItemColors
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.ListItemShapes
@@ -71,6 +73,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
+import pt.avus.app.data.CareHome
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -328,4 +331,33 @@ fun EmptyState(
 @Composable
 fun StatusDot(color: Color, modifier: Modifier = Modifier) {
     Box(modifier.size(8.dp).clip(CircleShape).background(color))
+}
+
+/** "N vagas" / "1 vaga" / "Lotado", from the residents and capacity reported to the Carta Social. */
+fun placesLabel(free: Int): String = when (free) {
+    0 -> "Lotado"
+    1 -> "1 vaga"
+    else -> "$free vagas"
+}
+
+/**
+ * Thin bar showing how full a home is (residents / capacity, as reported to the Carta Social),
+ * with the number of free places, or "Lotado". Draws nothing when the numbers are unknown.
+ */
+@Composable
+fun OccupancyBar(home: CareHome, modifier: Modifier = Modifier, thickness: Dp = 6.dp) {
+    val occupancy = home.occupancy ?: return
+    val free = home.freePlaces ?: return
+    val color = if (free > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        LinearProgressIndicator(
+            progress = { occupancy },
+            modifier = Modifier.weight(1f).height(thickness),
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            drawStopIndicator = {},
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(placesLabel(free), style = MaterialTheme.typography.labelMediumEmphasized, color = color)
+    }
 }

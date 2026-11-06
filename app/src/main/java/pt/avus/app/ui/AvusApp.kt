@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
@@ -63,6 +64,33 @@ fun AvusApp(vm: AvusViewModel = viewModel()) {
     }
 
     BackHandler(enabled = currentTab != AppTab.HOMES) { currentTab = AppTab.HOMES }
+
+    // A reminder notification (or a recorded reply) asks to show "Respostas".
+    val openReplies by vm.openReplies.collectAsStateWithLifecycle()
+    LaunchedEffect(openReplies) {
+        if (openReplies) {
+            currentTab = AppTab.REPLIES
+            vm.repliesTabOpened()
+        }
+    }
+
+    // Back from a phone call to a home: ask how it went.
+    LifecycleResumeEffect(Unit) {
+        vm.onResume()
+        onPauseOrDispose { }
+    }
+
+    val replyPrompt by vm.replyPrompt.collectAsStateWithLifecycle()
+    if (state.isLoaded) {
+        replyPrompt?.let { prompt ->
+            ReplySheet(
+                prompt = prompt,
+                state = state,
+                onDismiss = { vm.dismissReplyPrompt() },
+                onSave = { homeId, status, note -> vm.saveReply(homeId, status, note) },
+            )
+        }
+    }
 
     Scaffold(
         containerColor = screenBackground,

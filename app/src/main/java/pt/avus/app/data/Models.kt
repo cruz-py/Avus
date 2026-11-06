@@ -30,6 +30,22 @@ data class CareHome(
 ) {
     val hasEmail: Boolean get() = email.isNotBlank()
 
+    /** Free places reported to the Carta Social (capacity − residents, never negative); null if unknown. */
+    val freePlaces: Int?
+        get() {
+            val cap = capacity.trim().toIntOrNull() ?: return null
+            val res = residents.trim().toIntOrNull() ?: return null
+            return if (cap > 0) (cap - res).coerceAtLeast(0) else null
+        }
+
+    /** Occupancy between 0 and 1, or null if unknown. */
+    val occupancy: Float?
+        get() {
+            val cap = capacity.trim().toIntOrNull()?.takeIf { it > 0 } ?: return null
+            val res = residents.trim().toIntOrNull() ?: return null
+            return (res.toFloat() / cap).coerceIn(0f, 1f)
+        }
+
     val cartaSocialUrl: String?
         get() = cartaSocialId.takeIf { it.isNotBlank() }?.let {
             "https://www.cartasocial.pt/resultados-da-pesquisa?p_p_id=SocialLetterPortlet_WAR_cartasocialportlet" +

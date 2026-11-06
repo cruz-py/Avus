@@ -95,6 +95,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
     var municipality by rememberSaveable { mutableStateOf<String?>(null) }
     var onlyWithEmail by rememberSaveable { mutableStateOf(false) }
     var onlySelected by rememberSaveable { mutableStateOf(false) }
+    var onlyWithPlaces by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -117,12 +118,13 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
     }
     val contactsByHome = remember(state.contacts) { state.contacts.associateBy { it.homeId } }
 
-    val filtered = remember(state.homes, searchQuery, district, municipality, onlyWithEmail, onlySelected, state.selectedIds) {
+    val filtered = remember(state.homes, searchQuery, district, municipality, onlyWithEmail, onlyWithPlaces, onlySelected, state.selectedIds) {
         val terms = normalizeForSearch(searchQuery).split(' ').filter { it.isNotBlank() }
         state.homes.filter { home ->
             (district == null || home.district.trim() == district) &&
                 (municipality == null || home.municipality.trim() == municipality) &&
                 (!onlyWithEmail || home.hasEmail) &&
+                (!onlyWithPlaces || (home.freePlaces ?: 0) > 0) &&
                 (!onlySelected || home.id in state.selectedIds) &&
                 (terms.isEmpty() || normalizeForSearch(
                     listOf(home.name, home.owner, home.locality, home.parish, home.municipality, home.postalCode)
@@ -225,6 +227,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
                     ) {
                         OptionPicker("Distrito", district, districts, "Todos os distritos", { district = it; municipality = null })
                         OptionPicker("Concelho", municipality, municipalities, "Todos os concelhos", { municipality = it })
+                        CheckFilterChip(onlyWithPlaces, { onlyWithPlaces = !onlyWithPlaces }, "Com vagas")
                         CheckFilterChip(onlyWithEmail, { onlyWithEmail = !onlyWithEmail }, "Com email")
                         CheckFilterChip(onlySelected, { onlySelected = !onlySelected }, "Selecionados")
                     }
@@ -288,7 +291,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
             onToggle = { vm.toggleSelection(home.id) },
             onEdit = { openedHomeId = null; homeToEdit = home },
             onDelete = { openedHomeId = null; vm.deleteHome(home.id) },
-            onCall = { Sender.dial(context, home.phone) },
+            onCall = { vm.callStarted(home.id); Sender.dial(context, home.phone) },
             onMap = { Sender.openMap(context, fullAddress(home)) },
             onCartaSocial = { home.cartaSocialUrl?.let { Sender.openUrl(context, it) } },
         )
@@ -425,6 +428,7 @@ private fun CareHomeRow(
                 } else if (home.legalForm.isNotBlank()) {
                     Text(home.legalForm, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                OccupancyBar(home, Modifier.padding(top = 6.dp, end = 8.dp))
             }
         },
         trailingContent = {
@@ -485,15 +489,20 @@ private fun CareHomeDetails(
                 QuickAction(Icons.Filled.Delete, "Apagar") { confirmDelete = true }
             }
             Spacer(Modifier.height(12.dp))
+            if (home.occupancy != null) {
+                Occupancy(home)
+                Spacer(Modifier.height(12.dp))
+            }
             val facts = listOf(
                 "Entidade" to home.owner,
                 "Natureza" to home.legalForm,
                 "Morada" to fullAddress(home),
                 "Freguesia" to home.parish,
                 "Distrito" to home.district,
-                "Capacidade" to home.capacity,
-                "Utentes" to home.residents,
-                "Atualizado na Carta Social" to home.lastUpdated.let { if (it.isBlank()) it else formatIsoDate(it) },
+                "Capacidade" to home.capacity.takeIf { home.occupancy == null }.orEmpty(),
+                "Atualizado na Carta Social" to home.lastUpdated.takeIf { home.occupancy == null }.orEmpty().let {
+                    if (it.isBlank()) it else formatIsoDate(it)
+                },
                 "Telefone" to home.phone,
                 "Email" to home.email.ifBlank { "— (pode acrescentar em Editar)" },
             ).filter { it.second.isNotBlank() }
@@ -528,6 +537,32 @@ private fun CareHomeDetails(
             confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Apagar") } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancelar") } },
         )
+    }
+}
+
+/** Occupancy in the details sheet: residents of capacity, free places, and where the numbers come from. */
+@Composable
+private fun Occupancy(home: CareHome) {
+    androidx.compose.material3.Surface(
+        Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = contentSurface,
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Ocupação", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "${home.residents} de ${home.capacity} utentes",
+                style = MaterialTheme.typography.titleMediumEmphasized,
+            )
+            OccupancyBar(home, thickness = 10.dp)
+            Text(
+                "Segundo a Carta Social" +
+                    (if (home.lastUpdated.isNotBlank()) " (atualizado a ${formatIsoDate(home.lastUpdated)})" else "") +
+                    ". Confirme sempre com o lar.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
