@@ -36,7 +36,7 @@ The upload is the App Bundle: `./gradlew bundleRelease` → `app/build/outputs/b
 - **App or game:** App · **Free**
 - **Category:** Lifestyle (Estilo de vida)
 - **Tags:** family, organisation/productivity related tags as offered
-- **Contact email:** _to choose: it is shown publicly on the listing_
+- **Contact email:** cruz.py27@gmail.com (shown publicly on the listing)
 - **Website:** https://github.com/cruz-py/Avus-app
 - **Privacy policy:** https://github.com/cruz-py/Avus-app/blob/main/PRIVACIDADE.md
 - **Countries:** Portugal (the list covers mainland Portugal only)
