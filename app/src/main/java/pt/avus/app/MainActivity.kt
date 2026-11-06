@@ -11,6 +11,7 @@ import android.graphics.Color
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pt.avus.app.data.ThemeMode
 import pt.avus.app.ui.AvusApp
@@ -22,6 +23,7 @@ class MainActivity : ComponentActivity() {
     private val vm: AvusViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) handle(intent)
