@@ -4,17 +4,17 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import pt.avus.app.carta.Envio
-import pt.avus.app.carta.GeradorCarta
-import pt.avus.app.data.Contacto
-import pt.avus.app.data.Documento
-import pt.avus.app.data.EstadoContacto
-import pt.avus.app.data.ErroImportacao
-import pt.avus.app.data.ImportadorCsv
-import pt.avus.app.data.Lar
-import pt.avus.app.data.Perfil
-import pt.avus.app.data.Repositorio
-import pt.avus.app.data.CamposPerfil
+import pt.avus.app.letter.Sender
+import pt.avus.app.letter.LetterGenerator
+import pt.avus.app.data.Contact
+import pt.avus.app.data.Document
+import pt.avus.app.data.ContactStatus
+import pt.avus.app.data.ImportException
+import pt.avus.app.data.CsvImporter
+import pt.avus.app.data.CareHome
+import pt.avus.app.data.Profile
+import pt.avus.app.data.Repository
+import pt.avus.app.data.ProfileFields
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -26,252 +26,253 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-data class EstadoApp(
-    val carregado: Boolean = false,
-    val lares: List<Lar> = emptyList(),
-    val selecionados: Set<String> = emptySet(),
-    val perfil: Perfil = emptyMap(),
-    val documentos: List<Documento> = emptyList(),
-    val contactos: List<Contacto> = emptyList(),
-    /** Texto da carta editado à mão (null = usar o texto gerado automaticamente). */
-    val cartaPersonalizada: String? = null,
-    val aImportar: Boolean = false,
+data class AppState(
+    val isLoaded: Boolean = false,
+    val homes: List<CareHome> = emptyList(),
+    val selectedIds: Set<String> = emptySet(),
+    val profile: Profile = emptyMap(),
+    val documents: List<Document> = emptyList(),
+    val contacts: List<Contact> = emptyList(),
+    /** Letter text edited by hand (null = use the generated text). */
+    val customLetter: String? = null,
+    val isImporting: Boolean = false,
 ) {
-    val laresSelecionados: List<Lar> get() = lares.filter { it.id in selecionados }
-    val documentosAnexados: List<Documento> get() = documentos.filter { it.anexado }
+    val selectedHomes: List<CareHome> get() = homes.filter { it.id in selectedIds }
+    val attachedDocuments: List<Document> get() = documents.filter { it.isAttached }
 
-    val cartaGerada: String
-        get() = GeradorCarta.gerar(perfil, documentosAnexados, documentos.filterNot { it.anexado })
+    val generatedLetter: String
+        get() = LetterGenerator.generate(profile, attachedDocuments, documents.filterNot { it.isAttached })
 
-    val carta: String get() = cartaPersonalizada ?: cartaGerada
+    val letter: String get() = customLetter ?: generatedLetter
 }
 
 class AvusViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val repo = Repositorio(app)
-    private val _estado = MutableStateFlow(EstadoApp())
-    val estado: StateFlow<EstadoApp> = _estado.asStateFlow()
+    private val repo = Repository(app)
+    private val _state = MutableStateFlow(AppState())
+    val state: StateFlow<AppState> = _state.asStateFlow()
 
-    /** Mensagens curtas para mostrar numa Snackbar. */
-    private val _mensagem = MutableStateFlow<String?>(null)
-    val mensagem: StateFlow<String?> = _mensagem.asStateFlow()
+    /** Short messages to show in a Snackbar. */
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
 
-    private var gravarPerfilJob: Job? = null
-    private var gravarCartaJob: Job? = null
+    private var saveProfileJob: Job? = null
+    private var saveLetterJob: Job? = null
 
     init {
         viewModelScope.launch {
-            _estado.value = EstadoApp(
-                carregado = true,
-                lares = repo.carregarLares().sortedBy { it.nome.lowercase() },
-                selecionados = repo.carregarSelecao(),
-                perfil = repo.carregarPerfil(),
-                documentos = repo.carregarDocumentos(),
-                contactos = repo.carregarContactos(),
-                cartaPersonalizada = repo.carregarCartaPersonalizada(),
+            repo.migrateLegacyStorage()
+            _state.value = AppState(
+                isLoaded = true,
+                homes = repo.loadHomes().sortedBy { it.name.lowercase() },
+                selectedIds = repo.loadSelection(),
+                profile = repo.loadProfile(),
+                documents = repo.loadDocuments(),
+                contacts = repo.loadContacts(),
+                customLetter = repo.loadCustomLetter(),
             )
         }
     }
 
-    fun mensagemMostrada() { _mensagem.value = null }
-    fun mostrar(texto: String) { _mensagem.value = texto }
+    fun messageShown() { _message.value = null }
+    fun showMessage(text: String) { _message.value = text }
 
-    // ---------- Lares ----------
+    // ---------- Care homes ----------
 
-    fun importarCsv(uri: Uri) {
-        _estado.update { it.copy(aImportar = true) }
+    fun importCsv(uri: Uri) {
+        _state.update { it.copy(isImporting = true) }
         viewModelScope.launch {
             try {
-                val bytes = repo.lerBytes(uri)
-                val resultado = withContext(Dispatchers.Default) { ImportadorCsv.importar(bytes) }
-                if (resultado.lares.isEmpty()) {
-                    mostrar(
-                        if (resultado.filtrouPorResposta)
-                            "Não foram encontradas ERPI no ficheiro (${resultado.linhasLidas} linhas lidas)."
+                val bytes = repo.readUriBytes(uri)
+                val result = withContext(Dispatchers.Default) { CsvImporter.importBytes(bytes) }
+                if (result.homes.isEmpty()) {
+                    showMessage(
+                        if (result.filteredBySocialResponse)
+                            "Não foram encontradas ERPI no ficheiro (${result.rowsRead} linhas lidas)."
                         else "Não foram encontrados lares no ficheiro."
                     )
                     return@launch
                 }
-                // Junta à lista atual: permite importar vários ficheiros (ex.: um por distrito).
-                val atuais = _estado.value.lares.associateBy { it.id }.toMutableMap()
-                var novos = 0
-                resultado.lares.forEach { lar ->
-                    val existente = atuais[lar.id]
-                    if (existente == null) novos++
-                    // Não substitui um email que o utilizador tenha acrescentado à mão.
-                    atuais[lar.id] = if (existente != null && lar.email.isBlank()) lar.copy(email = existente.email) else lar
+                // Merge into the current list: allows importing several files (e.g. one per district).
+                val existingById = _state.value.homes.associateBy { it.id }.toMutableMap()
+                var newCount = 0
+                result.homes.forEach { home ->
+                    val existing = existingById[home.id]
+                    if (existing == null) newCount++
+                    // Do not overwrite an email the user added by hand.
+                    existingById[home.id] = if (existing != null && home.email.isBlank()) home.copy(email = existing.email) else home
                 }
-                val lista = atuais.values.sortedBy { it.nome.lowercase() }
-                _estado.update { it.copy(lares = lista) }
-                repo.guardarLares(lista)
-                val comEmail = resultado.lares.count { it.temEmail }
-                mostrar(
-                    "Importados ${resultado.lares.size} lares ($novos novos, $comEmail com email)." +
-                        if (!resultado.filtrouPorResposta) " Atenção: o ficheiro não indica a resposta social, por isso foram importadas todas as linhas." else ""
+                val list = existingById.values.sortedBy { it.name.lowercase() }
+                _state.update { it.copy(homes = list) }
+                repo.saveHomes(list)
+                val withEmail = result.homes.count { it.hasEmail }
+                showMessage(
+                    "Importados ${result.homes.size} lares ($newCount novos, $withEmail com email)." +
+                        if (!result.filteredBySocialResponse) " Atenção: o ficheiro não indica a resposta social, por isso foram importadas todas as linhas." else ""
                 )
-            } catch (e: ErroImportacao) {
-                mostrar(e.message ?: "Erro ao importar.")
+            } catch (e: ImportException) {
+                showMessage(e.message ?: "Erro ao importar.")
             } catch (e: Exception) {
-                mostrar("Não foi possível ler o ficheiro: ${e.message}")
+                showMessage("Não foi possível ler o ficheiro: ${e.message}")
             } finally {
-                _estado.update { it.copy(aImportar = false) }
+                _state.update { it.copy(isImporting = false) }
             }
         }
     }
 
-    fun guardarLar(lar: Lar) {
-        val novo = if (lar.id.isBlank()) lar.copy(id = "manual-" + UUID.randomUUID(), manual = true) else lar
-        val lista = (_estado.value.lares.filterNot { it.id == novo.id } + novo).sortedBy { it.nome.lowercase() }
-        _estado.update { it.copy(lares = lista) }
-        viewModelScope.launch { repo.guardarLares(lista) }
+    fun saveHome(home: CareHome) {
+        val newValue = if (home.id.isBlank()) home.copy(id = "manual-" + UUID.randomUUID(), manual = true) else home
+        val list = (_state.value.homes.filterNot { it.id == newValue.id } + newValue).sortedBy { it.name.lowercase() }
+        _state.update { it.copy(homes = list) }
+        viewModelScope.launch { repo.saveHomes(list) }
     }
 
-    fun apagarLar(id: String) {
-        val lista = _estado.value.lares.filterNot { it.id == id }
-        _estado.update { it.copy(lares = lista, selecionados = it.selecionados - id) }
+    fun deleteHome(id: String) {
+        val list = _state.value.homes.filterNot { it.id == id }
+        _state.update { it.copy(homes = list, selectedIds = it.selectedIds - id) }
         viewModelScope.launch {
-            repo.guardarLares(lista)
-            repo.guardarSelecao(_estado.value.selecionados)
+            repo.saveHomes(list)
+            repo.saveSelection(_state.value.selectedIds)
         }
     }
 
-    fun apagarLaresImportados() {
-        val lista = _estado.value.lares.filter { it.manual }
-        val ids = lista.map { it.id }.toSet()
-        _estado.update { it.copy(lares = lista, selecionados = it.selecionados.intersect(ids)) }
+    fun deleteImportedHomes() {
+        val list = _state.value.homes.filter { it.manual }
+        val ids = list.map { it.id }.toSet()
+        _state.update { it.copy(homes = list, selectedIds = it.selectedIds.intersect(ids)) }
         viewModelScope.launch {
-            repo.guardarLares(lista)
-            repo.guardarSelecao(_estado.value.selecionados)
+            repo.saveHomes(list)
+            repo.saveSelection(_state.value.selectedIds)
         }
     }
 
-    fun alternarSelecao(id: String) = definirSelecao(
-        _estado.value.selecionados.let { if (id in it) it - id else it + id }
+    fun toggleSelection(id: String) = setSelection(
+        _state.value.selectedIds.let { if (id in it) it - id else it + id }
     )
 
-    fun selecionarTodos(ids: Collection<String>) = definirSelecao(_estado.value.selecionados + ids)
-    fun limparSelecao() = definirSelecao(emptySet())
+    fun selectAll(ids: Collection<String>) = setSelection(_state.value.selectedIds + ids)
+    fun clearSelection() = setSelection(emptySet())
 
-    private fun definirSelecao(ids: Set<String>) {
-        _estado.update { it.copy(selecionados = ids) }
-        viewModelScope.launch { repo.guardarSelecao(ids) }
+    private fun setSelection(ids: Set<String>) {
+        _state.update { it.copy(selectedIds = ids) }
+        viewModelScope.launch { repo.saveSelection(ids) }
     }
 
-    // ---------- Perfil ----------
+    // ---------- Profile ----------
 
-    fun atualizarCampo(chave: String, valor: String) {
-        _estado.update { it.copy(perfil = it.perfil + (chave to valor)) }
-        // Grava pouco depois de o utilizador parar de escrever.
-        gravarPerfilJob?.cancel()
-        gravarPerfilJob = viewModelScope.launch {
+    fun updateField(key: String, value: String) {
+        _state.update { it.copy(profile = it.profile + (key to value)) }
+        // Save shortly after the user stops typing.
+        saveProfileJob?.cancel()
+        saveProfileJob = viewModelScope.launch {
             delay(400)
-            repo.guardarPerfil(_estado.value.perfil)
+            repo.saveProfile(_state.value.profile)
         }
     }
 
-    // ---------- Documentos ----------
+    // ---------- Documents ----------
 
-    fun anexarDocumento(docId: String, uri: Uri) {
+    fun attachDocument(docId: String, uri: Uri) {
         viewModelScope.launch {
             try {
-                val (ficheiro, nomeOriginal) = repo.copiarDocumento(uri)
-                val anterior = _estado.value.documentos.firstOrNull { it.id == docId }?.ficheiro
-                atualizarDocumentos { docs ->
-                    docs.map { if (it.id == docId) it.copy(ficheiro = ficheiro, nomeOriginal = nomeOriginal) else it }
+                val (file, originalName) = repo.copyDocument(uri)
+                val previous = _state.value.documents.firstOrNull { it.id == docId }?.file
+                updateDocuments { docs ->
+                    docs.map { if (it.id == docId) it.copy(file = file, originalName = originalName) else it }
                 }
-                anterior?.let { repo.apagarFicheiroDocumento(it) }
+                previous?.let { repo.deleteDocumentFile(it) }
             } catch (e: Exception) {
-                mostrar("Não foi possível anexar o ficheiro: ${e.message}")
+                showMessage("Não foi possível anexar o ficheiro: ${e.message}")
             }
         }
     }
 
-    fun removerAnexo(docId: String) {
-        val anterior = _estado.value.documentos.firstOrNull { it.id == docId }?.ficheiro ?: return
-        atualizarDocumentos { docs -> docs.map { if (it.id == docId) it.copy(ficheiro = null, nomeOriginal = null) else it } }
-        viewModelScope.launch { repo.apagarFicheiroDocumento(anterior) }
+    fun removeAttachment(docId: String) {
+        val previous = _state.value.documents.firstOrNull { it.id == docId }?.file ?: return
+        updateDocuments { docs -> docs.map { if (it.id == docId) it.copy(file = null, originalName = null) else it } }
+        viewModelScope.launch { repo.deleteDocumentFile(previous) }
     }
 
-    fun adicionarDocumento(nome: String) {
-        if (nome.isBlank()) return
-        atualizarDocumentos { it + Documento("doc-" + UUID.randomUUID(), nome.trim(), personalizado = true) }
+    fun addDocument(name: String) {
+        if (name.isBlank()) return
+        updateDocuments { it + Document("doc-" + UUID.randomUUID(), name.trim(), custom = true) }
     }
 
-    fun apagarDocumento(docId: String) {
-        val doc = _estado.value.documentos.firstOrNull { it.id == docId } ?: return
-        atualizarDocumentos { docs -> docs.filterNot { it.id == docId } }
-        doc.ficheiro?.let { viewModelScope.launch { repo.apagarFicheiroDocumento(it) } }
+    fun deleteDocument(docId: String) {
+        val doc = _state.value.documents.firstOrNull { it.id == docId } ?: return
+        updateDocuments { docs -> docs.filterNot { it.id == docId } }
+        doc.file?.let { viewModelScope.launch { repo.deleteDocumentFile(it) } }
     }
 
-    private fun atualizarDocumentos(f: (List<Documento>) -> List<Documento>) {
-        _estado.update { it.copy(documentos = f(it.documentos)) }
-        viewModelScope.launch { repo.guardarDocumentos(_estado.value.documentos) }
+    private fun updateDocuments(f: (List<Document>) -> List<Document>) {
+        _state.update { it.copy(documents = f(it.documents)) }
+        viewModelScope.launch { repo.saveDocuments(_state.value.documents) }
     }
 
-    fun ficheiroDocumento(doc: Documento) = doc.ficheiro?.let { repo.ficheiroDocumento(it) }
+    fun documentFile(doc: Document) = doc.file?.let { repo.documentFile(it) }
 
-    // ---------- Carta ----------
+    // ---------- Letter ----------
 
-    fun editarCarta(texto: String) {
-        // Se o texto voltar a ser igual ao gerado, deixa de contar como "editado à mão".
-        val personalizada = texto.takeIf { it != _estado.value.cartaGerada }
-        _estado.update { it.copy(cartaPersonalizada = personalizada) }
-        gravarCartaJob?.cancel()
-        gravarCartaJob = viewModelScope.launch {
+    fun editLetter(text: String) {
+        // If the text goes back to matching the generated one, it no longer counts as hand-edited.
+        val custom = text.takeIf { it != _state.value.generatedLetter }
+        _state.update { it.copy(customLetter = custom) }
+        saveLetterJob?.cancel()
+        saveLetterJob = viewModelScope.launch {
             delay(400)
-            repo.guardarCartaPersonalizada(personalizada)
+            repo.saveCustomLetter(custom)
         }
     }
 
-    fun reporCarta() {
-        gravarCartaJob?.cancel()
-        _estado.update { it.copy(cartaPersonalizada = null) }
-        viewModelScope.launch { repo.guardarCartaPersonalizada(null) }
+    fun resetLetter() {
+        saveLetterJob?.cancel()
+        _state.update { it.copy(customLetter = null) }
+        viewModelScope.launch { repo.saveCustomLetter(null) }
     }
 
-    /** Anexos para o email: documentos do utente + (opcionalmente) a carta em PDF. */
-    suspend fun prepararAnexos(texto: String, incluirPdf: Boolean): List<Uri> {
+    /** Email attachments: the resident's documents + (optionally) the letter as PDF. */
+    suspend fun prepareAttachments(text: String, includePdf: Boolean): List<Uri> {
         val app = getApplication<Application>()
-        val e = _estado.value
-        val uris = e.documentosAnexados.mapNotNull { doc ->
-            ficheiroDocumento(doc)?.takeIf { it.exists() }?.let { Envio.uriPartilhavel(app, it) }
+        val e = _state.value
+        val uris = e.attachedDocuments.mapNotNull { doc ->
+            documentFile(doc)?.takeIf { it.exists() }?.let { Sender.shareableUri(app, it) }
         }
-        if (!incluirPdf) return uris
-        val pdf = Envio.gerarPdf(
+        if (!includePdf) return uris
+        val pdf = Sender.generatePdf(
             app,
-            GeradorCarta.assunto(e.perfil),
-            texto,
-            Envio.nomePdf(e.perfil[CamposPerfil.NOME].orEmpty()),
+            LetterGenerator.subject(e.profile),
+            text,
+            Sender.pdfFileName(e.profile[ProfileFields.NAME].orEmpty()),
         )
-        return listOf(Envio.uriPartilhavel(app, pdf)) + uris
+        return listOf(Sender.shareableUri(app, pdf)) + uris
     }
 
-    fun tamanhoAnexosBytes(): Long =
-        _estado.value.documentosAnexados.sumOf { ficheiroDocumento(it)?.length() ?: 0L }
+    fun attachmentsSizeBytes(): Long =
+        _state.value.attachedDocuments.sumOf { documentFile(it)?.length() ?: 0L }
 
-    // ---------- Acompanhamento ----------
+    // ---------- Follow-up ----------
 
-    fun registarEnvio(larIds: Collection<String>) {
-        val agora = System.currentTimeMillis()
-        val atuais = _estado.value.contactos.associateBy { it.larId }.toMutableMap()
-        larIds.forEach { id ->
-            val existente = atuais[id]
-            atuais[id] = existente?.copy(dataEnvio = agora, dataAtualizacao = agora,
-                estado = if (existente.estado == EstadoContacto.SEM_RESPOSTA) EstadoContacto.ENVIADO else existente.estado)
-                ?: Contacto(id, EstadoContacto.ENVIADO, agora, agora)
+    fun recordSent(homeIds: Collection<String>) {
+        val now = System.currentTimeMillis()
+        val existingById = _state.value.contacts.associateBy { it.homeId }.toMutableMap()
+        homeIds.forEach { id ->
+            val existing = existingById[id]
+            existingById[id] = existing?.copy(sentAt = now, updatedAt = now,
+                status = if (existing.status == ContactStatus.NO_REPLY) ContactStatus.SENT else existing.status)
+                ?: Contact(id, ContactStatus.SENT, now, now)
         }
-        guardarContactos(atuais.values.toList())
+        saveContacts(existingById.values.toList())
     }
 
-    fun atualizarContacto(contacto: Contacto) {
-        val c = contacto.copy(dataAtualizacao = System.currentTimeMillis())
-        guardarContactos(_estado.value.contactos.filterNot { it.larId == c.larId } + c)
+    fun updateContact(contact: Contact) {
+        val c = contact.copy(updatedAt = System.currentTimeMillis())
+        saveContacts(_state.value.contacts.filterNot { it.homeId == c.homeId } + c)
     }
 
-    fun apagarContacto(larId: String) = guardarContactos(_estado.value.contactos.filterNot { it.larId == larId })
+    fun deleteContact(homeId: String) = saveContacts(_state.value.contacts.filterNot { it.homeId == homeId })
 
-    private fun guardarContactos(lista: List<Contacto>) {
-        _estado.update { it.copy(contactos = lista) }
-        viewModelScope.launch { repo.guardarContactos(lista) }
+    private fun saveContacts(list: List<Contact>) {
+        _state.update { it.copy(contacts = list) }
+        viewModelScope.launch { repo.saveContacts(list) }
     }
 }

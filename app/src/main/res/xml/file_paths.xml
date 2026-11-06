@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <files-path name="documentos" path="documentos/" />
-    <cache-path name="cartas" path="cartas/" />
+    <files-path name="documents" path="documents/" />
+    <cache-path name="letters" path="letters/" />
 </paths>

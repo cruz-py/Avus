@@ -48,61 +48,61 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import pt.avus.app.carta.Envio
-import pt.avus.app.carta.GeradorCarta
-import pt.avus.app.data.CamposPerfil
-import pt.avus.app.data.Lar
+import pt.avus.app.letter.Sender
+import pt.avus.app.letter.LetterGenerator
+import pt.avus.app.data.ProfileFields
+import pt.avus.app.data.CareHome
 import kotlinx.coroutines.launch
 
-private enum class ModoEnvio { UNICO, INDIVIDUAL }
+private enum class SendMode { SINGLE, INDIVIDUAL }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EcraEnviar(
-    estado: EstadoApp,
+fun SendScreen(
+    state: AppState,
     vm: AvusViewModel,
-    irParaLares: () -> Unit,
-    irParaUtente: () -> Unit,
-    irParaRespostas: () -> Unit,
+    goToHomes: () -> Unit,
+    goToResident: () -> Unit,
+    goToReplies: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var modo by rememberSaveable { mutableStateOf(ModoEnvio.UNICO) }
-    var incluirPdf by rememberSaveable { mutableStateOf(true) }
-    var indiceIndividual by rememberSaveable { mutableIntStateOf(0) }
-    var aPreparar by remember { mutableStateOf(false) }
-    var confirmarReposicao by remember { mutableStateOf(false) }
-    var concluido by remember { mutableStateOf<Int?>(null) }
+    var mode by rememberSaveable { mutableStateOf(SendMode.SINGLE) }
+    var includePdf by rememberSaveable { mutableStateOf(true) }
+    var currentIndex by rememberSaveable { mutableIntStateOf(0) }
+    var isPreparing by remember { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
+    var completedCount by remember { mutableStateOf<Int?>(null) }
 
-    val selecionados = estado.laresSelecionados
-    val comEmail = selecionados.filter { it.temEmail }
-    val semEmail = selecionados.filterNot { it.temEmail }
-    val emFalta = GeradorCarta.camposEmFalta(estado.perfil)
-    val assunto = GeradorCarta.assunto(estado.perfil)
-    val emailResponsavel = estado.perfil[CamposPerfil.RESP_EMAIL].orEmpty().trim()
-    val tamanho = vm.tamanhoAnexosBytes()
-    val podeEnviar = comEmail.isNotEmpty() && emFalta.isEmpty() && !aPreparar
+    val selectedHomes = state.selectedHomes
+    val withEmail = selectedHomes.filter { it.hasEmail }
+    val withoutEmail = selectedHomes.filterNot { it.hasEmail }
+    val missing = LetterGenerator.missingFields(state.profile)
+    val subject = LetterGenerator.subject(state.profile)
+    val relativeEmail = state.profile[ProfileFields.RELATIVE_EMAIL].orEmpty().trim()
+    val attachmentsSize = vm.attachmentsSizeBytes()
+    val canSend = withEmail.isNotEmpty() && missing.isEmpty() && !isPreparing
 
-    fun enviar(destino: List<Lar>, texto: String, aoAbrir: () -> Unit) {
-        aPreparar = true
+    fun send(target: List<CareHome>, text: String, onOpen: () -> Unit) {
+        isPreparing = true
         scope.launch {
             try {
-                val anexos = vm.prepararAnexos(texto, incluirPdf)
-                val emails = destino.map { it.email }
-                val ok = if (destino.size == 1) {
-                    Envio.abrirEmail(context, emails, listOfNotNull(emailResponsavel.ifBlank { null }), assunto, texto, anexos)
+                val attachments = vm.prepareAttachments(text, includePdf)
+                val emails = target.map { it.email }
+                val ok = if (target.size == 1) {
+                    Sender.openEmail(context, emails, listOfNotNull(relativeEmail.ifBlank { null }), subject, text, attachments)
                 } else {
-                    // Lares em Bcc: nenhum lar vê os endereços dos outros. O próprio familiar fica em "Para" (cópia).
-                    Envio.abrirEmail(context, listOfNotNull(emailResponsavel.ifBlank { null }), emails, assunto, texto, anexos)
+                    // Homes in Bcc so none sees the others' addresses. The relative goes in "To" (as a copy).
+                    Sender.openEmail(context, listOfNotNull(relativeEmail.ifBlank { null }), emails, subject, text, attachments)
                 }
                 if (ok) {
-                    vm.registarEnvio(destino.map { it.id })
-                    aoAbrir()
-                } else vm.mostrar("Não foi encontrada nenhuma app de email. Instale o Gmail ou outra app de email.")
+                    vm.recordSent(target.map { it.id })
+                    onOpen()
+                } else vm.showMessage("Não foi encontrada nenhuma app de email. Instale o Gmail ou outra app de email.")
             } catch (e: Exception) {
-                vm.mostrar("Erro ao preparar o email: ${e.message}")
+                vm.showMessage("Erro ao preparar o email: ${e.message}")
             } finally {
-                aPreparar = false
+                isPreparing = false
             }
         }
     }
@@ -111,13 +111,13 @@ fun EcraEnviar(
         contentWindowInsets = WindowInsets(0),
         topBar = { TopAppBar(title = { Text("Enviar pré-inscrição") }) },
     ) { padding ->
-        if (selecionados.isEmpty()) {
-            EstadoVazio(
+        if (selectedHomes.isEmpty()) {
+            EmptyState(
                 Icons.Filled.Email,
                 "Nenhum lar selecionado",
                 "Escolha na lista os lares a que quer enviar a pré-inscrição.",
                 Modifier.padding(padding),
-            ) { Button(onClick = irParaLares) { Text("Escolher lares") } }
+            ) { Button(onClick = goToHomes) { Text("Escolher lares") } }
             return@Scaffold
         }
 
@@ -125,137 +125,137 @@ fun EcraEnviar(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (emFalta.isNotEmpty()) {
-                Aviso("Falta preencher na ficha do utente: ${emFalta.joinToString(", ")}.", erro = true)
-                OutlinedButton(onClick = irParaUtente) { Text("Preencher ficha") }
+            if (missing.isNotEmpty()) {
+                Notice("Falta preencher na ficha do utente: ${missing.joinToString(", ")}.", isError = true)
+                OutlinedButton(onClick = goToResident) { Text("Preencher ficha") }
             }
 
-            // Destinatários
-            CartaoSecao("Destinatários") {
-                Text("${comEmail.size} de ${selecionados.size} lares selecionados têm email.")
-                if (semEmail.isNotEmpty()) {
+            // Recipients
+            SectionCard("Destinatários") {
+                Text("${withEmail.size} de ${selectedHomes.size} lares selecionados têm email.")
+                if (withoutEmail.isNotEmpty()) {
                     HorizontalDivider()
                     Text(
                         "Sem email — contacte por telefone ou acrescente o email na lista:",
                         style = MaterialTheme.typography.labelLarge,
                     )
-                    semEmail.forEach { lar ->
+                    withoutEmail.forEach { home ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(lar.nome, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(lar.telefone.ifBlank { "sem telefone" }, style = MaterialTheme.typography.bodySmall)
+                                Text(home.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(home.phone.ifBlank { "sem telefone" }, style = MaterialTheme.typography.bodySmall)
                             }
-                            if (lar.telefone.isNotBlank()) {
-                                IconButton(onClick = { Envio.ligar(context, lar.telefone) }) { Icon(Icons.Filled.Phone, "Ligar") }
+                            if (home.phone.isNotBlank()) {
+                                IconButton(onClick = { Sender.dial(context, home.phone) }) { Icon(Icons.Filled.Phone, "Ligar") }
                             }
                         }
                     }
                 }
-                TextButton(onClick = irParaLares) { Text("Alterar seleção") }
+                TextButton(onClick = goToHomes) { Text("Alterar seleção") }
             }
 
-            // Modo de envio
-            CartaoSecao("Como enviar") {
-                OpcaoRadio(
+            // Sending mode
+            SectionCard("Como enviar") {
+                RadioOption(
                     "Um único email para todos",
                     "Mais rápido. Os lares seguem em Bcc (não veem os outros destinatários)" +
-                        if (emailResponsavel.isNotBlank()) " e recebe uma cópia em $emailResponsavel." else ".",
-                    modo == ModoEnvio.UNICO,
-                ) { modo = ModoEnvio.UNICO }
-                OpcaoRadio(
+                        if (relativeEmail.isNotBlank()) " e recebe uma cópia em $relativeEmail." else ".",
+                    mode == SendMode.SINGLE,
+                ) { mode = SendMode.SINGLE }
+                RadioOption(
                     "Um email para cada lar",
                     "A carta é dirigida ao nome de cada lar. Mais pessoal, mas tem de carregar em \"Enviar\" uma vez por lar.",
-                    modo == ModoEnvio.INDIVIDUAL,
-                ) { modo = ModoEnvio.INDIVIDUAL; indiceIndividual = 0 }
+                    mode == SendMode.INDIVIDUAL,
+                ) { mode = SendMode.INDIVIDUAL; currentIndex = 0 }
                 HorizontalDivider()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Anexar a carta em PDF")
                         Text("Útil para os lares imprimirem e arquivarem.", style = MaterialTheme.typography.bodySmall)
                     }
-                    Switch(checked = incluirPdf, onCheckedChange = { incluirPdf = it })
+                    Switch(checked = includePdf, onCheckedChange = { includePdf = it })
                 }
                 Text(
-                    "Documentos em anexo: ${estado.documentosAnexados.size}" +
-                        if (tamanho > 0) " (${formatarTamanho(tamanho)})" else "",
+                    "Documentos em anexo: ${state.attachedDocuments.size}" +
+                        if (attachmentsSize > 0) " (${formatSize(attachmentsSize)})" else "",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                if (tamanho > LIMITE_ANEXOS) {
-                    Aviso("Os anexos ultrapassam 20 MB e o email pode ser recusado. Retire ou comprima alguns documentos.", erro = true)
+                if (attachmentsSize > ATTACHMENTS_LIMIT_BYTES) {
+                    Notice("Os anexos ultrapassam 20 MB e o email pode ser recusado. Retire ou comprima alguns documentos.", isError = true)
                 }
             }
 
-            // Carta
-            CartaoSecao("Carta de pré-inscrição") {
-                Text("Assunto: $assunto", style = MaterialTheme.typography.labelLarge)
-                if (estado.cartaPersonalizada != null) {
-                    Aviso("Editou o texto à mão: alterações na ficha do utente já não atualizam a carta automaticamente.")
+            // Letter
+            SectionCard("Carta de pré-inscrição") {
+                Text("Assunto: $subject", style = MaterialTheme.typography.labelLarge)
+                if (state.customLetter != null) {
+                    Notice("Editou o texto à mão: alterações na ficha do utente já não atualizam a carta automaticamente.")
                 }
                 OutlinedTextField(
-                    value = estado.carta,
-                    onValueChange = { vm.editarCarta(it) },
+                    value = state.letter,
+                    onValueChange = { vm.editLetter(it) },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 12,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     textStyle = MaterialTheme.typography.bodyMedium,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (estado.cartaPersonalizada != null) {
-                        TextButton(onClick = { confirmarReposicao = true }) { Text("Repor texto automático") }
+                    if (state.customLetter != null) {
+                        TextButton(onClick = { confirmReset = true }) { Text("Repor texto automático") }
                     }
                     TextButton(onClick = {
                         scope.launch {
                             runCatching {
-                                val pdf = Envio.gerarPdf(context, assunto, estado.carta, Envio.nomePdf(estado.perfil[CamposPerfil.NOME].orEmpty()))
-                                val uri = Envio.uriPartilhavel(context, pdf)
+                                val pdf = Sender.generatePdf(context, subject, state.letter, Sender.pdfFileName(state.profile[ProfileFields.NAME].orEmpty()))
+                                val uri = Sender.shareableUri(context, pdf)
                                 context.startActivity(
                                     Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf")
                                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 )
-                            }.onFailure { vm.mostrar("Não há nenhuma app para abrir PDF.") }
+                            }.onFailure { vm.showMessage("Não há nenhuma app para abrir PDF.") }
                         }
                     }) { Text("Pré-visualizar PDF") }
                 }
             }
 
-            // Ação
-            when (modo) {
-                ModoEnvio.UNICO -> Button(
-                    onClick = { enviar(comEmail, estado.carta) { concluido = comEmail.size } },
-                    enabled = podeEnviar,
+            // Action
+            when (mode) {
+                SendMode.SINGLE -> Button(
+                    onClick = { send(withEmail, state.letter) { completedCount = withEmail.size } },
+                    enabled = canSend,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (aPreparar) "A preparar…" else "Abrir email para ${comEmail.size} lares")
+                    Text(if (isPreparing) "A preparar…" else "Abrir email para ${withEmail.size} lares")
                 }
-                ModoEnvio.INDIVIDUAL -> {
-                    val atual = comEmail.getOrNull(indiceIndividual)
-                    if (atual == null) {
-                        if (comEmail.isNotEmpty()) {
-                            Aviso("Emails preparados para todos os ${comEmail.size} lares.")
+                SendMode.INDIVIDUAL -> {
+                    val current = withEmail.getOrNull(currentIndex)
+                    if (current == null) {
+                        if (withEmail.isNotEmpty()) {
+                            Notice("Emails preparados para todos os ${withEmail.size} lares.")
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick = { indiceIndividual = 0 }) { Text("Recomeçar") }
-                                Button(onClick = irParaRespostas) { Text("Ver respostas") }
+                                OutlinedButton(onClick = { currentIndex = 0 }) { Text("Recomeçar") }
+                                Button(onClick = goToReplies) { Text("Ver respostas") }
                             }
                         }
                     } else {
                         Text(
-                            "Lar ${indiceIndividual + 1} de ${comEmail.size}: ${atual.nome}",
+                            "Lar ${currentIndex + 1} de ${withEmail.size}: ${current.name}",
                             style = MaterialTheme.typography.titleSmall,
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { indiceIndividual++ }) { Text("Saltar") }
+                            OutlinedButton(onClick = { currentIndex++ }) { Text("Saltar") }
                             Button(
                                 onClick = {
-                                    enviar(listOf(atual), GeradorCarta.personalizar(estado.carta, atual.nome)) { indiceIndividual++ }
+                                    send(listOf(current), LetterGenerator.addRecipientHeader(state.letter, current.name)) { currentIndex++ }
                                 },
-                                enabled = podeEnviar,
+                                enabled = canSend,
                                 modifier = Modifier.weight(1f),
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.Send, null)
                                 Spacer(Modifier.width(8.dp))
-                                Text(if (aPreparar) "A preparar…" else "Abrir email", maxLines = 1)
+                                Text(if (isPreparing) "A preparar…" else "Abrir email", maxLines = 1)
                             }
                         }
                     }
@@ -270,19 +270,19 @@ fun EcraEnviar(
         }
     }
 
-    if (confirmarReposicao) {
+    if (confirmReset) {
         AlertDialog(
-            onDismissRequest = { confirmarReposicao = false },
+            onDismissRequest = { confirmReset = false },
             title = { Text("Repor texto automático?") },
             text = { Text("As alterações que fez à mão na carta serão perdidas.") },
-            confirmButton = { TextButton(onClick = { vm.reporCarta(); confirmarReposicao = false }) { Text("Repor") } },
-            dismissButton = { TextButton(onClick = { confirmarReposicao = false }) { Text("Cancelar") } },
+            confirmButton = { TextButton(onClick = { vm.resetLetter(); confirmReset = false }) { Text("Repor") } },
+            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancelar") } },
         )
     }
 
-    concluido?.let { n ->
+    completedCount?.let { n ->
         AlertDialog(
-            onDismissRequest = { concluido = null },
+            onDismissRequest = { completedCount = null },
             title = { Text("Email preparado") },
             text = {
                 Text(
@@ -291,23 +291,23 @@ fun EcraEnviar(
                 )
             },
             confirmButton = {
-                TextButton(onClick = { vm.limparSelecao(); concluido = null; irParaRespostas() }) { Text("Limpar e ver respostas") }
+                TextButton(onClick = { vm.clearSelection(); completedCount = null; goToReplies() }) { Text("Limpar e ver respostas") }
             },
-            dismissButton = { TextButton(onClick = { concluido = null }) { Text("Manter seleção") } },
+            dismissButton = { TextButton(onClick = { completedCount = null }) { Text("Manter seleção") } },
         )
     }
 }
 
 @Composable
-private fun OpcaoRadio(titulo: String, descricao: String, selecionado: Boolean, aoEscolher: () -> Unit) {
+private fun RadioOption(title: String, description: String, selected: Boolean, onSelect: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().selectable(selected = selecionado, onClick = aoEscolher, role = Role.RadioButton),
+        Modifier.fillMaxWidth().selectable(selected = selected, onClick = onSelect, role = Role.RadioButton),
         verticalAlignment = Alignment.Top,
     ) {
-        RadioButton(selected = selecionado, onClick = null, modifier = Modifier.padding(top = 2.dp, end = 12.dp))
+        RadioButton(selected = selected, onClick = null, modifier = Modifier.padding(top = 2.dp, end = 12.dp))
         Column {
-            Text(titulo, style = MaterialTheme.typography.bodyLarge)
-            Text(descricao, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

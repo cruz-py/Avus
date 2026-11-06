@@ -32,65 +32,65 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-enum class Separador(val rotulo: String, val icone: ImageVector) {
-    LARES("Lares", Icons.Filled.Home),
-    UTENTE("Utente", Icons.Filled.Person),
-    ENVIAR("Enviar", Icons.Filled.Email),
-    ACOMPANHAR("Respostas", Icons.AutoMirrored.Filled.List),
+enum class AppTab(val label: String, val icon: ImageVector) {
+    HOMES("Lares", Icons.Filled.Home),
+    RESIDENT("Utente", Icons.Filled.Person),
+    SEND("Enviar", Icons.Filled.Email),
+    REPLIES("Respostas", Icons.AutoMirrored.Filled.List),
 }
 
 @Composable
 fun AvusApp(vm: AvusViewModel = viewModel()) {
-    val estado by vm.estado.collectAsStateWithLifecycle()
-    val mensagem by vm.mensagem.collectAsStateWithLifecycle()
-    var separador by rememberSaveable { mutableStateOf(Separador.LARES) }
+    val state by vm.state.collectAsStateWithLifecycle()
+    val message by vm.message.collectAsStateWithLifecycle()
+    var currentTab by rememberSaveable { mutableStateOf(AppTab.HOMES) }
     val snackbar = remember { SnackbarHostState() }
 
-    LaunchedEffect(mensagem) {
-        mensagem?.let {
+    LaunchedEffect(message) {
+        message?.let {
             snackbar.showSnackbar(it)
-            vm.mensagemMostrada()
+            vm.messageShown()
         }
     }
 
-    BackHandler(enabled = separador != Separador.LARES) { separador = Separador.LARES }
+    BackHandler(enabled = currentTab != AppTab.HOMES) { currentTab = AppTab.HOMES }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             NavigationBar {
-                Separador.entries.forEach { s ->
+                AppTab.entries.forEach { s ->
                     NavigationBarItem(
-                        selected = separador == s,
-                        onClick = { separador = s },
+                        selected = currentTab == s,
+                        onClick = { currentTab = s },
                         icon = {
-                            val contagem = when (s) {
-                                Separador.ENVIAR -> estado.selecionados.size
+                            val badgeCount = when (s) {
+                                AppTab.SEND -> state.selectedIds.size
                                 else -> 0
                             }
-                            if (contagem > 0) {
-                                BadgedBox(badge = { Badge { Text("$contagem") } }) { Icon(s.icone, null) }
-                            } else Icon(s.icone, null)
+                            if (badgeCount > 0) {
+                                BadgedBox(badge = { Badge { Text("$badgeCount") } }) { Icon(s.icon, null) }
+                            } else Icon(s.icon, null)
                         },
-                        label = { Text(s.rotulo) },
+                        label = { Text(s.label) },
                     )
                 }
             }
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(bottom = padding.calculateBottomPadding())) {
-            if (!estado.carregado) {
+            if (!state.isLoaded) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
-            } else when (separador) {
-                Separador.LARES -> EcraLares(estado, vm, irParaEnvio = { separador = Separador.ENVIAR })
-                Separador.UTENTE -> EcraUtente(estado, vm)
-                Separador.ENVIAR -> EcraEnviar(
-                    estado, vm,
-                    irParaLares = { separador = Separador.LARES },
-                    irParaUtente = { separador = Separador.UTENTE },
-                    irParaRespostas = { separador = Separador.ACOMPANHAR },
+            } else when (currentTab) {
+                AppTab.HOMES -> HomesScreen(state, vm, goToSend = { currentTab = AppTab.SEND })
+                AppTab.RESIDENT -> ResidentScreen(state, vm)
+                AppTab.SEND -> SendScreen(
+                    state, vm,
+                    goToHomes = { currentTab = AppTab.HOMES },
+                    goToResident = { currentTab = AppTab.RESIDENT },
+                    goToReplies = { currentTab = AppTab.REPLIES },
                 )
-                Separador.ACOMPANHAR -> EcraRespostas(estado, vm, irParaLares = { separador = Separador.LARES })
+                AppTab.REPLIES -> RepliesScreen(state, vm, goToHomes = { currentTab = AppTab.HOMES })
             }
         }
     }

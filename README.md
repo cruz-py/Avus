@@ -1,20 +1,29 @@
 # Avus
 
-App Android (pt-PT) para facilitar a inscrição de um familiar em Estruturas Residenciais para Pessoas Idosas (ERPI / lares) em Portugal.
+Android app that helps a family apply for a place for a relative in residential care homes for the elderly in Portugal (ERPI, *Estruturas Residenciais para Pessoas Idosas*, commonly "lares").
 
-## Funcionalidades
+The app's UI and the letters it writes are in European Portuguese (pt-PT); the code is in English.
 
-- **Lares** — importa a lista oficial da Carta Social (CSV gerado por `tools/cartasocial`, ou dados abertos municipais como os de Cascais), filtra só as ERPI; pesquisa e filtros por distrito/concelho; seleção múltipla; adicionar/editar lares à mão.
-- **Utente** — ficha do utente e do familiar responsável; lista de documentos habitualmente pedidos, com anexos (PDF/fotografia).
-- **Enviar** — gera a carta de pré-inscrição (editável) e abre a app de email com tudo preenchido: um email para todos (lares em Bcc) ou um email por lar; carta em PDF opcional.
-- **Respostas** — acompanhamento dos contactos (enviado, respondeu, visita, lista de espera, vaga…) com notas.
+## Features
 
-## Privacidade
+- **Lares (care homes)** — imports the official Carta Social list (CSV produced by `tools/cartasocial`, or municipal open data such as Cascais's) and keeps only ERPI; search and district/municipality filters; multi-select; add or edit homes by hand.
+- **Utente (resident)** — profile of the resident and of the responsible relative; checklist of the documents homes usually ask for, with attachments (PDF/photo).
+- **Enviar (send)** — generates the pre-registration letter (editable) and opens the email app with everything filled in: one email to all homes (in Bcc) or one per home; optional PDF of the letter.
+- **Respostas (replies)** — follow-up of each contact (sent, replied, visit, waiting list, place available…) with notes.
 
-Todos os dados ficam apenas no telemóvel (backups desativados). Nada é enviado sem o utilizador carregar em "Enviar" na sua app de email.
+## Privacy
 
-## Desenvolvimento
+All data stays on the phone (backups disabled). Nothing is sent until the user taps "Send" in their own email app.
+
+## Development
 
 - Kotlin + Jetpack Compose (Material 3), minSdk 26
-- `./gradlew assembleDebug` — compilar
-- `./gradlew testDebugUnitTest` — testes (importador CSV e gerador da carta)
+- `./gradlew assembleDebug` — build
+- `./gradlew testDebugUnitTest` — unit tests (CSV importer, letter generator, storage migration)
+- `tools/cartasocial/` — script that builds the national ERPI CSV from cartasocial.pt
+
+Code layout (`app/src/main/java/pt/avus/app/`):
+
+- `data/` — models, JSON storage (`Repository`), CSV import (`CsvImporter`), profile fields
+- `letter/` — letter text (`LetterGenerator`), PDF and email/phone/map intents (`Sender`)
+- `ui/` — Compose screens and the `AvusViewModel`

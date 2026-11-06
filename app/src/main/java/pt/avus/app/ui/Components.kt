@@ -44,69 +44,69 @@ import java.util.Locale
 
 val LocalePT: Locale = Locale.forLanguageTag("pt-PT")
 
-fun formatarData(millis: Long): String = SimpleDateFormat("dd/MM/yyyy", LocalePT).format(Date(millis))
+fun formatDate(millis: Long): String = SimpleDateFormat("dd/MM/yyyy", LocalePT).format(Date(millis))
 
-fun formatarTamanho(bytes: Long): String = when {
+fun formatSize(bytes: Long): String = when {
     bytes >= 1_000_000 -> String.format(LocalePT, "%.1f MB", bytes / 1_000_000.0)
     bytes >= 1_000 -> "${bytes / 1_000} KB"
     else -> "$bytes B"
 }
 
-/** Botão compacto que abre uma lista de opções (ex.: filtro por distrito). */
+/** Compact chip that opens a list of options (e.g. district filter). */
 @Composable
-fun SeletorOpcoes(
-    rotulo: String,
-    valor: String?,
-    opcoes: List<String>,
-    textoTodos: String,
-    aoEscolher: (String?) -> Unit,
+fun OptionPicker(
+    label: String,
+    value: String?,
+    options: List<String>,
+    allLabel: String,
+    onSelect: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var aberto by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(false) }
     Box(modifier) {
         AssistChip(
-            onClick = { aberto = true },
+            onClick = { expanded = true },
             label = {
                 Text(
-                    valor ?: rotulo,
+                    value ?: label,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.widthIn(max = 160.dp),
                 )
             },
             trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null, Modifier.size(18.dp)) },
-            enabled = opcoes.isNotEmpty(),
+            enabled = options.isNotEmpty(),
         )
         DropdownMenu(
-            expanded = aberto,
-            onDismissRequest = { aberto = false },
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
             modifier = Modifier.heightIn(max = 420.dp),
         ) {
-            DropdownMenuItem(text = { Text(textoTodos) }, onClick = { aoEscolher(null); aberto = false })
-            opcoes.forEach { opcao ->
-                DropdownMenuItem(text = { Text(opcao) }, onClick = { aoEscolher(opcao); aberto = false })
+            DropdownMenuItem(text = { Text(allLabel) }, onClick = { onSelect(null); expanded = false })
+            options.forEach { option ->
+                DropdownMenuItem(text = { Text(option) }, onClick = { onSelect(option); expanded = false })
             }
         }
     }
 }
 
 @Composable
-fun CartaoSecao(
-    titulo: String,
+fun SectionCard(
+    title: String,
     modifier: Modifier = Modifier,
-    conteudo: @Composable ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(titulo, style = MaterialTheme.typography.titleMedium)
-            conteudo()
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            content()
         }
     }
 }
 
 @Composable
-fun Aviso(texto: String, modifier: Modifier = Modifier, erro: Boolean = false) {
-    val cores = if (erro) {
+fun Notice(text: String, modifier: Modifier = Modifier, isError: Boolean = false) {
+    val colors = if (isError) {
         CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.errorContainer,
             contentColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -117,22 +117,22 @@ fun Aviso(texto: String, modifier: Modifier = Modifier, erro: Boolean = false) {
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
         )
     }
-    Card(modifier.fillMaxWidth(), colors = cores) {
+    Card(modifier.fillMaxWidth(), colors = colors) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(if (erro) Icons.Filled.Warning else Icons.Filled.Info, null, Modifier.size(20.dp))
+            Icon(if (isError) Icons.Filled.Warning else Icons.Filled.Info, null, Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
-            Text(texto, style = MaterialTheme.typography.bodyMedium)
+            Text(text, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
 
 @Composable
-fun EstadoVazio(
-    icone: ImageVector,
-    titulo: String,
-    texto: String,
+fun EmptyState(
+    icon: ImageVector,
+    title: String,
+    text: String,
     modifier: Modifier = Modifier,
-    acoes: @Composable ColumnScope.() -> Unit = {},
+    actions: @Composable ColumnScope.() -> Unit = {},
 ) {
     Column(
         modifier
@@ -142,17 +142,17 @@ fun EstadoVazio(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icone, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
+        Icon(icon, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.padding(8.dp))
-        Text(titulo, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
         Spacer(Modifier.padding(4.dp))
         Text(
-            texto,
+            text,
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.padding(12.dp))
-        acoes()
+        actions()
     }
 }
