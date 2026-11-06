@@ -241,7 +241,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpen
         contentWindowInsets = WindowInsets(0),
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text("Lares (ERPI)") },
+                title = { Text("Lares") },
                 subtitle = if (state.homes.isEmpty()) null else ({
                     Text("${filtered.size} lares · ${state.selectedIds.size} selecionados")
                 }),
@@ -384,7 +384,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpen
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "A lista inclui os lares licenciados (Estruturas Residenciais para Pessoas Idosas) de Portugal " +
+                        "A lista inclui os lares licenciados (Estruturas Residenciais para Pessoas Idosas, ERPI) de Portugal " +
                             "continental, publicados na Carta Social pela Direção-Geral da Solidariedade e Segurança Social (DGSSS)." +
                             (state.officialListDate?.let { " Dados de ${formatIsoDate(it)}; a lista é atualizada com as novas versões da app." } ?: "")
                     )
