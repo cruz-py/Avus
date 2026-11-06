@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -40,6 +41,9 @@ import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
@@ -63,6 +67,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -73,6 +79,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -81,6 +88,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import pt.avus.app.data.CareHome
+import pt.avus.app.data.DistanceReference
+import pt.avus.app.data.Geo
 import pt.avus.app.data.OfficialList
 import pt.avus.app.data.normalizeForSearch
 import pt.avus.app.letter.Sender
@@ -96,18 +105,13 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
     var onlyWithEmail by rememberSaveable { mutableStateOf(false) }
     var onlySelected by rememberSaveable { mutableStateOf(false) }
     var onlyWithPlaces by rememberSaveable { mutableStateOf(false) }
+    var showMap by rememberSaveable { mutableStateOf(false) }
+    var maxKm by rememberSaveable { mutableStateOf<Int?>(null) }
+    var pickReference by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
     var openedHomeId by rememberSaveable { mutableStateOf<String?>(null) }
     var homeToEdit by remember { mutableStateOf<CareHome?>(null) }
-
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { vm.importCsv(it) }
-    }
-    fun openImport() = importLauncher.launch(
-        arrayOf("text/csv", "text/comma-separated-values", "text/plain", "application/csv", "application/vnd.ms-excel")
-    )
 
     val districts = remember(state.homes) {
         state.homes.map { it.district.trim() }.filter { it.isNotEmpty() }.distinct().sortedBy { normalizeForSearch(it) }
@@ -118,18 +122,114 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
     }
     val contactsByHome = remember(state.contacts) { state.contacts.associateBy { it.homeId } }
 
-    val filtered = remember(state.homes, searchQuery, district, municipality, onlyWithEmail, onlyWithPlaces, onlySelected, state.selectedIds) {
+    // Distance sorting: worked out on the phone from postal codes (see Geo / DistanceReference).
+    val reference = remember(state.distanceReference, state.profile, state.homes) {
+        state.distanceReference?.locate(state.profile, state.homes)
+    }
+    val distances: Map<String, Double> = remember(reference, state.homes) {
+        reference?.let { ref -> state.homes.mapNotNull { h -> h.point?.let { h.id to Geo.distanceKm(ref.point, it) } }.toMap() }
+            ?: emptyMap()
+    }
+
+    // Precomputed once per list: accent-free search text and the location line shown on each row,
+    // so typing and scrolling do not re-normalise 2,600 homes.
+    val homeIndex: Map<String, HomeIndex> = remember(state.homes) {
+        state.homes.associate { home ->
+            home.id to HomeIndex(
+                searchText = normalizeForSearch(
+                    listOf(home.name, home.owner, home.locality, home.parish, home.municipality, home.postalCode).joinToString(" ")
+                ),
+                location = locationLine(home),
+            )
+        }
+    }
+    // The selection only affects the list when "Selecionados" is on.
+    val selectionFilter = if (onlySelected) state.selectedIds else null
+
+    val filtered = remember(
+        state.homes, homeIndex, searchQuery, district, municipality, onlyWithEmail, onlyWithPlaces, selectionFilter,
+        distances, maxKm,
+    ) {
         val terms = normalizeForSearch(searchQuery).split(' ').filter { it.isNotBlank() }
         state.homes.filter { home ->
             (district == null || home.district.trim() == district) &&
                 (municipality == null || home.municipality.trim() == municipality) &&
                 (!onlyWithEmail || home.hasEmail) &&
                 (!onlyWithPlaces || (home.freePlaces ?: 0) > 0) &&
-                (!onlySelected || home.id in state.selectedIds) &&
-                (terms.isEmpty() || normalizeForSearch(
-                    listOf(home.name, home.owner, home.locality, home.parish, home.municipality, home.postalCode)
-                        .joinToString(" ")
-                ).let { text -> terms.all { it in text } })
+                (selectionFilter == null || home.id in selectionFilter) &&
+                // Homes without a position (e.g. added by hand) are kept by the distance filter, at the end.
+                (maxKm == null || home.id !in distances || distances.getValue(home.id) <= maxKm!!) &&
+                (terms.isEmpty() || homeIndex[home.id]?.searchText.orEmpty().let { text -> terms.all { it in text } })
+        }.let { list -> if (distances.isEmpty()) list else list.sortedBy { distances[it.id] ?: Double.MAX_VALUE } }
+    }
+
+    @Composable
+    fun Header() {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SearchField(searchQuery, onChange = { searchQuery = it }, Modifier.padding(horizontal = ScreenPadding))
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = ScreenPadding),
+                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                listOf("Lista" to false, "Mapa" to true).forEachIndexed { i, (label, map) ->
+                    ToggleButton(
+                        checked = showMap == map,
+                        onCheckedChange = { showMap = map },
+                        shapes = if (i == 0) ButtonGroupDefaults.connectedLeadingButtonShapes()
+                        else ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                        colors = ToggleButtonDefaults.colors(containerColor = contentSurface),
+                    ) { Text(label) }
+                }
+                Spacer(Modifier.weight(1f))
+                FilterChip(
+                    selected = reference != null,
+                    onClick = { pickReference = true },
+                    label = { Text(reference?.label ?: "Perto de…", maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp)) },
+                    leadingIcon = { Icon(Icons.Filled.LocationOn, null, Modifier.size(FilterChipDefaults.IconSize)) },
+                )
+            }
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = ScreenPadding),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (reference != null) {
+                    val radii = listOf(5, 10, 25, 50)
+                    OptionPicker(
+                        "Distância", maxKm?.let { "Até $it km" }, radii.map { "Até $it km" }, "Qualquer distância",
+                        { picked -> maxKm = picked?.filter(Char::isDigit)?.toIntOrNull() },
+                    )
+                }
+                OptionPicker("Distrito", district, districts, "Todos os distritos", { district = it; municipality = null })
+                OptionPicker("Concelho", municipality, municipalities, "Todos os concelhos", { municipality = it })
+                CheckFilterChip(onlyWithPlaces, { onlyWithPlaces = !onlyWithPlaces }, "Com vagas")
+                CheckFilterChip(onlyWithEmail, { onlyWithEmail = !onlyWithEmail }, "Com email")
+                CheckFilterChip(onlySelected, { onlySelected = !onlySelected }, "Selecionados")
+            }
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 8.dp).padding(horizontal = ScreenPadding),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val date = state.officialListDate
+                if (date != null && state.homes.any { it.official }) {
+                    // Attribution of the bundled list, with the date it was collected.
+                    Text(
+                        "Fonte: ${OfficialList.SOURCE} · dados de ${formatIsoDate(date)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f).padding(start = 8.dp),
+                    )
+                } else Spacer(Modifier.weight(1f))
+                if (state.selectedIds.isNotEmpty()) {
+                    TextButton(onClick = { vm.clearSelection() }, shapes = ButtonDefaults.shapes()) { Text("Limpar") }
+                }
+                if (filtered.isNotEmpty() && filtered.size <= 200 && filtered.any { it.id !in state.selectedIds }) {
+                    TextButton(onClick = { vm.selectAll(filtered.map { it.id }) }, shapes = ButtonDefaults.shapes()) {
+                        Text("Selecionar todos")
+                    }
+                }
+            }
         }
     }
 
@@ -147,16 +247,8 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
                 actions = {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Mais opções") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                        DropdownMenuItem(text = { Text("Importar lista (CSV)") }, onClick = { menu = false; openImport() })
                         DropdownMenuItem(text = { Text("Adicionar lar manualmente") }, onClick = { menu = false; homeToEdit = CareHome("", "") })
-                        DropdownMenuItem(text = { Text("Onde obter a lista oficial") }, onClick = { menu = false; showHelp = true })
-                        if (state.officialListAvailable && state.homes.none { it.official }) {
-                            DropdownMenuItem(text = { Text("Restaurar lista oficial") }, onClick = { menu = false; vm.restoreOfficialList() })
-                        }
-                        if (state.homes.any { !it.manual }) {
-                            HorizontalDivider()
-                            DropdownMenuItem(text = { Text("Apagar lista importada") }, onClick = { menu = false; confirmDelete = true })
-                        }
+                        DropdownMenuItem(text = { Text("Sobre a lista de lares") }, onClick = { menu = false; showHelp = true })
                     }
                 },
                 colors = screenTopBarColors(),
@@ -194,23 +286,28 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
                 EmptyState(
                     Icons.Filled.Home,
                     "Ainda não há lares na lista",
-                    "Carregue a lista oficial de Estruturas Residenciais para Pessoas Idosas (Carta Social), " +
-                        "importe outra lista em CSV ou adicione lares manualmente.",
+                    "A lista de lares não está disponível nesta versão da app. Pode acrescentar lares manualmente.",
                 ) {
-                    if (state.officialListAvailable) {
-                        Button(onClick = { vm.restoreOfficialList() }, enabled = !state.isImporting, shapes = ButtonDefaults.shapes()) {
-                            Text("Carregar lista oficial")
-                        }
-                        Spacer(Modifier.padding(4.dp))
-                    }
-                    OutlinedButton(onClick = { openImport() }, shapes = ButtonDefaults.shapes()) { Text("Importar lista (CSV)") }
-                    Spacer(Modifier.padding(4.dp))
                     OutlinedButton(onClick = { homeToEdit = CareHome("", "") }, shapes = ButtonDefaults.shapes()) {
                         Text("Adicionar lar manualmente")
                     }
                     Spacer(Modifier.padding(4.dp))
-                    TextButton(onClick = { showHelp = true }, shapes = ButtonDefaults.shapes()) { Text("Onde obter a lista oficial?") }
+                    TextButton(onClick = { showHelp = true }, shapes = ButtonDefaults.shapes()) { Text("Sobre a lista de lares") }
                 }
+                return@Column
+            }
+
+            if (showMap) {
+                Header()
+                HomesMap(
+                    homes = filtered,
+                    selectedIds = state.selectedIds,
+                    reference = reference?.point,
+                    onOpen = { openedHomeId = it },
+                    modifier = Modifier.weight(1f).fillMaxWidth()
+                        .padding(start = ScreenPadding, end = ScreenPadding, top = 4.dp, bottom = ScreenPadding)
+                        .clip(MaterialTheme.shapes.extraLarge),
+                )
                 return@Column
             }
 
@@ -218,47 +315,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
                 contentPadding = PaddingValues(bottom = 120.dp),
                 verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
             ) {
-                item(key = "search") {
-                    SearchField(searchQuery, onChange = { searchQuery = it }, Modifier.padding(horizontal = ScreenPadding).padding(bottom = 8.dp))
-                }
-                item(key = "filters") {
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = ScreenPadding),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OptionPicker("Distrito", district, districts, "Todos os distritos", { district = it; municipality = null })
-                        OptionPicker("Concelho", municipality, municipalities, "Todos os concelhos", { municipality = it })
-                        CheckFilterChip(onlyWithPlaces, { onlyWithPlaces = !onlyWithPlaces }, "Com vagas")
-                        CheckFilterChip(onlyWithEmail, { onlyWithEmail = !onlyWithEmail }, "Com email")
-                        CheckFilterChip(onlySelected, { onlySelected = !onlySelected }, "Selecionados")
-                    }
-                }
-                item(key = "selection") {
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = 8.dp).padding(horizontal = ScreenPadding),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val date = state.officialListDate
-                        if (date != null && state.homes.any { it.official }) {
-                            // Attribution of the bundled list, with the date it was collected.
-                            Text(
-                                "Fonte: ${OfficialList.SOURCE} · dados de ${formatIsoDate(date)}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.weight(1f).padding(start = 8.dp),
-                            )
-                        } else Spacer(Modifier.weight(1f))
-                        if (state.selectedIds.isNotEmpty()) {
-                            TextButton(onClick = { vm.clearSelection() }, shapes = ButtonDefaults.shapes()) { Text("Limpar") }
-                        }
-                        if (filtered.isNotEmpty() && filtered.size <= 200 && filtered.any { it.id !in state.selectedIds }) {
-                            TextButton(onClick = { vm.selectAll(filtered.map { it.id }) }, shapes = ButtonDefaults.shapes()) {
-                                Text("Selecionar todos")
-                            }
-                        }
-                    }
-                }
+                item(key = "header") { Header() }
                 itemsIndexed(filtered, key = { _, home -> home.id }) { index, home ->
                     CareHomeRow(
                         home = home,
@@ -266,6 +323,9 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
                         count = filtered.size,
                         selected = home.id in state.selectedIds,
                         contactedAt = contactsByHome[home.id]?.sentAt,
+                        distanceKm = distances[home.id],
+                        sortedByDistance = reference != null,
+                        location = homeIndex[home.id]?.location.orEmpty(),
                         onToggle = { vm.toggleSelection(home.id) },
                         onOpen = { openedHomeId = home.id },
                         modifier = Modifier.animateItem().padding(horizontal = ScreenPadding),
@@ -292,10 +352,22 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
             onClose = { openedHomeId = null },
             onToggle = { vm.toggleSelection(home.id) },
             onEdit = { openedHomeId = null; homeToEdit = home },
-            onDelete = { openedHomeId = null; vm.deleteHome(home.id) },
+            // Official homes come with the app and cannot be deleted; anything else can.
+            onDelete = if (!home.official) ({ openedHomeId = null; vm.deleteHome(home.id) }) else null,
             onCall = { vm.callStarted(home.id); Sender.dial(context, home.phone) },
             onMap = { Sender.openMap(context, fullAddress(home)) },
             onCartaSocial = { home.cartaSocialUrl?.let { Sender.openUrl(context, it) } },
+        )
+    }
+
+    if (pickReference) {
+        DistanceReferenceDialog(
+            state = state,
+            municipalities = remember(state.homes) {
+                state.homes.map { it.municipality.trim() }.filter { it.isNotEmpty() }.distinct().sortedBy { normalizeForSearch(it) }
+            },
+            onPick = { vm.setDistanceReference(it); if (it == null) maxKm = null; pickReference = false },
+            onClose = { pickReference = false },
         )
     }
 
@@ -306,35 +378,23 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
     if (showHelp) {
         AlertDialog(
             onDismissRequest = { showHelp = false },
-            title = { Text("Onde obter a lista de lares") },
+            title = { Text("Sobre a lista de lares") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "A app já inclui a lista oficial dos lares licenciados de Portugal continental, recolhida da " +
-                            "Carta Social, publicada pela Direção-Geral da Solidariedade e Segurança Social (DGSSS). " +
-                            "A data dos dados aparece por baixo dos filtros. Se apagou a lista, escolha " +
-                            "\"Restaurar lista oficial\" no menu."
+                        "A lista inclui os lares licenciados (Estruturas Residenciais para Pessoas Idosas) de Portugal " +
+                            "continental, publicados na Carta Social pela Direção-Geral da Solidariedade e Segurança Social (DGSSS)." +
+                            (state.officialListDate?.let { " Dados de ${formatIsoDate(it)}; a lista é atualizada com as novas versões da app." } ?: "")
                     )
                     Text(
-                        "• Com um ficheiro CSV — por exemplo, os dados abertos de um município (como o portal " +
-                            "dadosabertos.cascais.pt). Escolha \"Importar lista (CSV)\": a app reconhece as colunas " +
-                            "automaticamente e guarda apenas os lares. Se o ficheiro vier em Excel (.xlsx), abra-o e use " +
-                            "\"Guardar como… CSV\"."
+                        "A ocupação (utentes e vagas) é a que cada lar indicou à Carta Social e pode não estar atualizada: " +
+                            "confirme sempre com o lar."
                     )
                     Text(
-                        "• À mão — na Carta Social, pesquise \"Pessoas Idosas\" → \"Estrutura Residencial para " +
-                            "Pessoas Idosas\" → distrito, abra cada lar que lhe interesse e copie os contactos com " +
-                            "\"Adicionar lar manualmente\"."
+                        "Se um lar não estiver na lista, pode acrescentá-lo com \"Adicionar lar manualmente\". Se um contacto " +
+                            "estiver errado ou faltar o email, abra o lar e escolha \"Editar\"."
                     )
-                    Text(
-                        "Os dados municipais podem incluir centros de dia e apoio domiciliário: confirme a lista " +
-                            "antes de enviar. Açores e Madeira não estão na Carta Social.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        "Nem todos os lares têm email na Carta Social. Pode acrescentá-lo à mão, abrindo o lar e escolhendo \"Editar\".",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    Text("Açores e Madeira não estão na Carta Social.", style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = { TextButton(onClick = { Sender.openUrl(context, CARTA_SOCIAL_URL) }) { Text("Abrir Carta Social") } },
@@ -342,15 +402,6 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
         )
     }
 
-    if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Apagar lista importada?") },
-            text = { Text("Os lares adicionados manualmente e o histórico de contactos são mantidos.") },
-            confirmButton = { TextButton(onClick = { vm.deleteImportedHomes(); confirmDelete = false }) { Text("Apagar") } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancelar") } },
-        )
-    }
 }
 
 fun fullAddress(home: CareHome): String =
@@ -362,6 +413,9 @@ fun fullAddress(home: CareHome): String =
 fun locationLine(home: CareHome): String =
     listOf(home.locality, home.municipality, home.district).map { it.trim() }.filter { it.isNotBlank() }
         .distinctBy { normalizeForSearch(it) }.joinToString(" · ")
+
+/** Per-home values precomputed for the list (see `homeIndex` in [HomesScreen]). */
+private data class HomeIndex(val searchText: String, val location: String)
 
 /** Pill-shaped search field on a tonal surface, as in Android 16/17 system apps. */
 @Composable
@@ -393,6 +447,9 @@ private fun CareHomeRow(
     count: Int,
     selected: Boolean,
     contactedAt: Long?,
+    distanceKm: Double?,
+    sortedByDistance: Boolean,
+    location: String,
     onToggle: () -> Unit,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
@@ -419,7 +476,12 @@ private fun CareHomeRow(
         },
         supportingContent = {
             Column {
-                val place = locationLine(home)
+                val distance = when {
+                    distanceKm != null -> Geo.formatDistance(distanceKm)
+                    sortedByDistance -> "Sem localização"
+                    else -> null
+                }
+                val place = listOfNotNull(distance, location.ifBlank { null }).joinToString(" · ")
                 if (place.isNotBlank()) Text(place, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (contactedAt != null) {
                     Text(
@@ -454,7 +516,7 @@ private fun CareHomeDetails(
     onClose: () -> Unit,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit,
+    onDelete: (() -> Unit)?,
     onCall: () -> Unit,
     onMap: () -> Unit,
     onCartaSocial: () -> Unit,
@@ -488,7 +550,7 @@ private fun CareHomeDetails(
                 if (home.phone.isNotBlank()) QuickAction(Icons.Filled.Phone, "Ligar", onCall)
                 if (fullAddress(home).isNotBlank()) QuickAction(Icons.Filled.LocationOn, "Ver no mapa", onMap)
                 QuickAction(Icons.Filled.Edit, "Editar", onEdit)
-                QuickAction(Icons.Filled.Delete, "Apagar") { confirmDelete = true }
+                if (onDelete != null) QuickAction(Icons.Filled.Delete, "Apagar") { confirmDelete = true }
             }
             Spacer(Modifier.height(12.dp))
             if (home.occupancy != null) {
@@ -536,7 +598,7 @@ private fun CareHomeDetails(
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Apagar este lar da lista?") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Apagar") } },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete?.invoke() }) { Text("Apagar") } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancelar") } },
         )
     }
@@ -623,5 +685,69 @@ private fun CareHomeEditor(home: CareHome, onClose: () -> Unit, onSave: (CareHom
             ) { Text("Guardar") }
         },
         dismissButton = { TextButton(onClick = onClose) { Text("Cancelar") } },
+    )
+}
+
+/** "Perto de…": the resident's or contact's address, a postal code, or a municipality. */
+@Composable
+private fun DistanceReferenceDialog(
+    state: AppState,
+    municipalities: List<String>,
+    onPick: (DistanceReference?) -> Unit,
+    onClose: () -> Unit,
+) {
+    var postalCode by remember { mutableStateOf("") }
+    var postalCodeError by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Ordenar por distância") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+                val options = listOf(DistanceReference.Resident, DistanceReference.Contact)
+                    .map { it to it.locate(state.profile, state.homes) }
+                options.forEachIndexed { i, (ref, located) ->
+                    SegmentedListItem(
+                        onClick = { onPick(ref) },
+                        enabled = located != null,
+                        colors = segmentedColors(),
+                        shapes = segmentedShapes(i, options.size),
+                        supportingContent = {
+                            Text(located?.label?.substringAfter("(")?.removeSuffix(")") ?: "Sem código postal na morada")
+                        },
+                    ) { Text(if (ref == DistanceReference.Resident) "Morada do utente" else "Morada do contacto") }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = postalCode,
+                        onValueChange = { postalCode = it.take(8); postalCodeError = false },
+                        label = { Text("Código postal") },
+                        placeholder = { Text("1000-001") },
+                        singleLine = true,
+                        isError = postalCodeError,
+                        supportingText = if (postalCodeError) ({ Text("Não encontrado. Experimente o concelho.") }) else null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = {
+                        val code = Geo.postalCodeIn(postalCode)
+                        val ref = code?.let { DistanceReference.PostalCode(it) }
+                        if (ref?.locate(state.profile, state.homes) != null) onPick(ref) else postalCodeError = true
+                    }) { Text("Usar") }
+                }
+                OptionPicker("Concelho", null, municipalities, "—", { name -> name?.let { onPick(DistanceReference.Municipality(it)) } })
+                Text(
+                    "A distância é aproximada (pelo código postal) e calculada no telemóvel.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Fechar") } },
+        dismissButton = if (state.distanceReference != null) ({
+            TextButton(onClick = { onPick(null) }) { Text("Não ordenar por distância") }
+        }) else null,
     )
 }

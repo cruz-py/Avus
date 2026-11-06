@@ -27,7 +27,28 @@ data class CareHome(
     val cartaSocialId: String = "",
     /** Came from the official list bundled with the app (see [OfficialList]). */
     val official: Boolean = false,
+    /** Approximate position (from the postal code), for the map and distances. */
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    /** How the position was found: "código postal", "código postal (4 dígitos)" or "concelho". */
+    val locationPrecision: String = "",
+    /** Fields the user corrected by hand (see [EDITABLE_FIELDS]); kept when a new official list arrives. */
+    val userEdited: Set<String> = emptySet(),
 ) {
+    /** Records which editable fields differ from [before] (the version the user started editing). */
+    fun markEditsComparedTo(before: CareHome): CareHome {
+        val changed = EDITABLE_FIELDS.filter { (_, f) -> f.first(this) != f.first(before) }.keys
+        return copy(userEdited = before.userEdited + changed)
+    }
+
+    /** This (fresh) home with the fields the user corrected in [old] put back. */
+    fun withUserEditsFrom(old: CareHome): CareHome =
+        old.userEdited.fold(copy(userEdited = old.userEdited)) { home, key ->
+            EDITABLE_FIELDS[key]?.let { (get, set) -> set(home, get(old)) } ?: home
+        }
+
+    val point: GeoPoint? get() = if (latitude != null && longitude != null) GeoPoint(latitude, longitude) else null
+
     val hasEmail: Boolean get() = email.isNotBlank()
 
     /** Free places reported to the Carta Social (capacity − residents, never negative); null if unknown. */
@@ -62,6 +83,9 @@ data class CareHome(
         .put("manual", manual)
         .put("residents", residents).put("lastUpdated", lastUpdated).put("cartaSocialId", cartaSocialId)
         .put("official", official)
+        .put("latitude", latitude ?: JSONObject.NULL).put("longitude", longitude ?: JSONObject.NULL)
+        .put("locationPrecision", locationPrecision)
+        .put("userEdited", JSONArray(userEdited.toList()))
 
     companion object {
         fun fromJson(o: JSONObject) = CareHome(
@@ -83,6 +107,23 @@ data class CareHome(
             lastUpdated = o.optString("lastUpdated"),
             cartaSocialId = o.optString("cartaSocialId"),
             official = o.optBoolean("official"),
+            latitude = o.optDoubleOrNull("latitude"),
+            longitude = o.optDoubleOrNull("longitude"),
+            locationPrecision = o.optString("locationPrecision"),
+            userEdited = o.optJSONArray("userEdited")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }.orEmpty(),
+        )
+
+        /** Fields the user can correct in the editor, with how to read and copy each one. */
+        val EDITABLE_FIELDS: Map<String, Pair<(CareHome) -> String, (CareHome, String) -> CareHome>> = mapOf(
+            "name" to ({ h: CareHome -> h.name } to { h: CareHome, v: String -> h.copy(name = v) }),
+            "email" to ({ h: CareHome -> h.email } to { h: CareHome, v: String -> h.copy(email = v) }),
+            "phone" to ({ h: CareHome -> h.phone } to { h: CareHome, v: String -> h.copy(phone = v) }),
+            "legalForm" to ({ h: CareHome -> h.legalForm } to { h: CareHome, v: String -> h.copy(legalForm = v) }),
+            "address" to ({ h: CareHome -> h.address } to { h: CareHome, v: String -> h.copy(address = v) }),
+            "postalCode" to ({ h: CareHome -> h.postalCode } to { h: CareHome, v: String -> h.copy(postalCode = v) }),
+            "locality" to ({ h: CareHome -> h.locality } to { h: CareHome, v: String -> h.copy(locality = v) }),
+            "municipality" to ({ h: CareHome -> h.municipality } to { h: CareHome, v: String -> h.copy(municipality = v) }),
+            "district" to ({ h: CareHome -> h.district } to { h: CareHome, v: String -> h.copy(district = v) }),
         )
 
         /** Stable id, so re-importing the same list does not duplicate homes. */
@@ -161,6 +202,9 @@ data class Contact(
 
 internal fun JSONObject.optStringOrNull(name: String): String? =
     if (isNull(name)) null else optString(name).ifEmpty { null }
+
+internal fun JSONObject.optDoubleOrNull(name: String): Double? =
+    if (!has(name) || isNull(name)) null else optDouble(name).takeUnless { it.isNaN() }
 
 internal inline fun <T> JSONArray.mapObjects(f: (JSONObject) -> T): List<T> =
     (0 until length()).map { f(getJSONObject(it)) }

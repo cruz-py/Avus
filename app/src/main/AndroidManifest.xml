@@ -4,6 +4,8 @@
 
     <!-- Reminders to call homes that have not answered (asked for from the "Respostas" screen). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Map tiles (OpenFreeMap). Nothing about the user is sent: only which map area is shown. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <queries>
         <intent>

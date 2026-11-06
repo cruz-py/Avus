@@ -32,6 +32,8 @@ object CsvImporter {
         NAME("Nome", listOf("nome do equipamento", "designacao do equipamento", "equipamento", "designacao", "denominacao", "nome")),
         ADDRESS("Morada", listOf("morada", "endereco", "rua")),
         DOOR_NUMBER("Número", listOf("numero policia", "numero de policia", "n policia", "numero porta")),
+        // Before LOCALITY, whose "local" pattern would otherwise claim the "Localização" column.
+        LOCATION_PRECISION("Localização", listOf("localizacao", "precisao da localizacao")),
         LOCALITY("Localidade", listOf("localidade", "local")),
         PARISH("Freguesia", listOf("freguesia")),
         MUNICIPALITY("Concelho", listOf("concelho", "municipio")),
@@ -42,6 +44,8 @@ object CsvImporter {
         RESIDENTS("Utentes", listOf("utentes", "n utentes", "numero de utentes")),
         LAST_UPDATED("Última atualização", listOf("ultima atualizacao", "data de atualizacao", "atualizado em")),
         CARTA_SOCIAL_ID("ID Carta Social", listOf("id carta social", "id equipamento")),
+        LATITUDE("Latitude", listOf("latitude", "lat")),
+        LONGITUDE("Longitude", listOf("longitude", "lon", "lng")),
         // Municipal open-data Carta Social format (e.g. Cascais): no social-response column,
         // but Sim/Não columns per target group ("d_pes_idos" = elderly people).
         ELDERLY("Pessoas idosas", listOf("d pes idos", "pessoas idosas")),
@@ -115,6 +119,9 @@ object CsvImporter {
                 residents = value(CsvColumn.RESIDENTS),
                 lastUpdated = value(CsvColumn.LAST_UPDATED),
                 cartaSocialId = cartaSocialId,
+                latitude = value(CsvColumn.LATITUDE).replace(',', '.').toDoubleOrNull()?.takeIf { it in -90.0..90.0 },
+                longitude = value(CsvColumn.LONGITUDE).replace(',', '.').toDoubleOrNull()?.takeIf { it in -180.0..180.0 },
+                locationPrecision = value(CsvColumn.LOCATION_PRECISION),
             )
             // The same facility may appear several times (once per social response): merge the rows.
             byId[id] = byId[id]?.let { merge(it, home) } ?: home
@@ -193,6 +200,9 @@ object CsvImporter {
         capacity = a.capacity.ifBlank { b.capacity },
         residents = a.residents.ifBlank { b.residents },
         lastUpdated = a.lastUpdated.ifBlank { b.lastUpdated },
+        latitude = a.latitude ?: b.latitude,
+        longitude = a.longitude ?: b.longitude,
+        locationPrecision = a.locationPrecision.ifBlank { b.locationPrecision },
     )
 
     private fun mapColumns(header: List<String>): Map<CsvColumn, Int> {

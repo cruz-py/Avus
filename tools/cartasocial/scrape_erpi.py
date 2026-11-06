@@ -18,6 +18,10 @@ Usage:
 Next to the CSV it writes <name>.properties with the collection date and row count,
 which the app shows as the data's date.
 
+Each home also gets coordinates for the map and distance sorting, from its postal code via
+geoapi.pt (free, no key): the full code (e.g. 7440-251), else its first 4 digits, else the
+centre of its municipality (average of the homes located there). Use --no-geocode to skip.
+
 Requires: requests  (pip install requests)
 """
 import argparse
@@ -27,7 +31,8 @@ import json
 import re
 import sys
 import time
-from datetime import date
+from collections import Counter
+from datetime import date, datetime
 from pathlib import Path
 
 import requests
@@ -53,7 +58,14 @@ COLUMNS = [
     "Distrito", "Concelho", "Freguesia", "Nome do Equipamento", "Entidade Proprietária",
     "Natureza Jurídica", "Resposta Social", "Morada", "Código Postal", "Localidade",
     "Telefone", "Email", "Capacidade", "Utentes", "Última atualização", "ID Carta Social",
+    "Latitude", "Longitude", "Localização",
 ]
+
+GEOAPI = "https://json.geoapi.pt/cp/"
+# "Localização" column: how precise the coordinates are.
+PRECISION_CP7 = "código postal"
+PRECISION_CP4 = "código postal (4 dígitos)"
+PRECISION_MUNICIPALITY = "concelho"
 
 
 class Client:
@@ -205,12 +217,65 @@ def parse_detail(page):
     }
 
 
+def geoapi_center(client, code):
+    """Centre [lat, lon] of a postal code (XXXX-XXX or XXXX) from geoapi.pt, cached; None if unknown."""
+    def fetch():
+        for attempt in range(6):
+            client._throttle()
+            try:
+                r = client.session.get(GEOAPI + code, timeout=60, headers={"Accept": "application/json"})
+            except requests.RequestException:
+                time.sleep(10 * (attempt + 1))
+                continue
+            if r.status_code == 200:
+                d = r.json()
+                center = d.get("centro") or d.get("centroDeMassa") or d.get("centroide")
+                return json.dumps(center)
+            if r.status_code == 404:
+                return "null"
+            if r.status_code == 429:
+                print("  geoapi.pt rate limit reached, waiting 2 minutes…", file=sys.stderr)
+                time.sleep(120)
+                continue
+            time.sleep(10 * (attempt + 1))
+        raise RuntimeError(f"geoapi.pt failed for {code}")
+    center = json.loads(client.cached(f"geo/{code}.json", fetch))
+    return (round(center[0], 6), round(center[1], 6)) if center else None
+
+
+def geocode(client, rows):
+    """Adds Latitude/Longitude/Localização to each row (postal code -> 4 digits -> municipality)."""
+    for n, row in enumerate(rows, 1):
+        cp = row["Código Postal"].strip()
+        point, precision = None, ""
+        if re.fullmatch(r"\d{4}-\d{3}", cp):
+            point, precision = geoapi_center(client, cp), PRECISION_CP7
+        if point is None and re.match(r"\d{4}", cp):
+            point, precision = geoapi_center(client, cp[:4]), PRECISION_CP4
+        if point:
+            row["Latitude"], row["Longitude"], row["Localização"] = point[0], point[1], precision
+        if n % 250 == 0:
+            print(f"  geocoded {n}/{len(rows)}", flush=True)
+    # Municipality fallback: centre of the homes already located in the same municipality.
+    by_municipality = {}
+    for row in rows:
+        if row.get("Latitude") != "" and row.get("Latitude") is not None:
+            by_municipality.setdefault(row["Concelho"], []).append((row["Latitude"], row["Longitude"]))
+    for row in rows:
+        if row.get("Latitude") in ("", None) and by_municipality.get(row["Concelho"]):
+            pts = by_municipality[row["Concelho"]]
+            row["Latitude"] = round(sum(p[0] for p in pts) / len(pts), 6)
+            row["Longitude"] = round(sum(p[1] for p in pts) / len(pts), 6)
+            row["Localização"] = PRECISION_MUNICIPALITY
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--output", default="erpi_portugal.csv", help="output CSV file")
     ap.add_argument("--cache", default="cache", help="cache folder (allows resuming)")
     ap.add_argument("--delay", type=float, default=1.0, help="seconds between requests (min. 0.5)")
     ap.add_argument("--district", action="append", help="limit to district(s), by name or code")
+    ap.add_argument("--no-geocode", action="store_true", help="do not add coordinates (no geoapi.pt requests)")
     a = ap.parse_args()
 
     client = Client(Path(a.cache), max(a.delay, 0.5))
@@ -258,6 +323,14 @@ def main():
                 rows.append(row)
             print(f"  {m['name']}: {len(m['facilities'])}", flush=True)
 
+    for row in rows:
+        row.setdefault("Latitude", ""); row.setdefault("Longitude", ""); row.setdefault("Localização", "")
+    if not a.no_geocode:
+        print("Adding coordinates from postal codes (geoapi.pt)…", flush=True)
+        geocode(client, rows)
+        located = Counter(r["Localização"] for r in rows)
+        print("  " + ", ".join(f"{v} by {k or 'none'}" for k, v in located.most_common()), flush=True)
+
     with open(a.output, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS, delimiter=";")
         w.writeheader()
@@ -267,7 +340,8 @@ def main():
     listings = list((Path(a.cache) / "lists").glob("*.json"))
     collected = date.fromtimestamp(min(f.stat().st_mtime for f in listings)) if listings else date.today()
     Path(a.output).with_suffix(".properties").write_text(
-        f"# Generated by tools/cartasocial/scrape_erpi.py\ndate={collected.isoformat()}\ncount={len(rows)}\n",
+        f"# Generated by tools/cartasocial/scrape_erpi.py\ndate={collected.isoformat()}\ncount={len(rows)}\n"
+        f"generated={datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}\n",
         encoding="utf-8",
     )
 

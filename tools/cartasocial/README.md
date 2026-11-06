@@ -25,6 +25,9 @@ python3 scrape_erpi.py --output ../../app/src/main/assets/erpi_portugal.csv
 This also writes `erpi_portugal.properties` (collection date and count). Installed apps pick up
 the new list on update, unless the user deleted it.
 
+- Adds approximate coordinates to each home from its postal code via [geoapi.pt](https://geoapi.pt)
+  (free, no key): full code, else first 4 digits, else the municipality's centre. One request per
+  postal code (~2,400, cached in `cache/geo/`); `--no-geocode` skips it.
 - Makes 1 request per second (`--delay` to slow down) and caches everything in `cache/`:
   if interrupted, run it again and it carries on where it stopped.
 - For fresh data, delete `cache/` (or just `cache/lists/` to pick up new homes).

@@ -64,6 +64,9 @@ import pt.avus.app.letter.Sender
 
 private enum class SendMode { SINGLE, INDIVIDUAL }
 
+/** Most email services treat one message to many recipients as spam; bigger sends go out in groups. */
+private const val MAX_RECIPIENTS_PER_EMAIL = 30
+
 @Composable
 fun SendScreen(
     state: AppState,
@@ -77,6 +80,7 @@ fun SendScreen(
     var mode by rememberSaveable { mutableStateOf(SendMode.SINGLE) }
     var includePdf by rememberSaveable { mutableStateOf(true) }
     var currentIndex by rememberSaveable { mutableIntStateOf(0) }
+    var batchIndex by rememberSaveable { mutableIntStateOf(0) }
     var isPreparing by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
     var completedCount by remember { mutableStateOf<Int?>(null) }
@@ -87,7 +91,7 @@ fun SendScreen(
     val missing = LetterGenerator.missingFields(state.profile)
     val subject = LetterGenerator.subject(state.profile)
     val relativeEmail = state.profile[ProfileFields.RELATIVE_EMAIL].orEmpty().trim()
-    val attachmentsSize = vm.attachmentsSizeBytes()
+    val attachmentsSize = state.attachmentsSizeBytes
     val canSend = withEmail.isNotEmpty() && missing.isEmpty() && !isPreparing
 
     fun send(target: List<CareHome>, text: String, onOpen: () -> Unit) {
@@ -262,12 +266,42 @@ fun SendScreen(
 
             // Action
             when (mode) {
-                SendMode.SINGLE -> SendButton(
-                    text = if (isPreparing) "A preparar…" else "Abrir email para ${withEmail.size} lares",
-                    isPreparing = isPreparing,
-                    enabled = canSend,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { send(withEmail, state.letter) { completedCount = withEmail.size } }
+                SendMode.SINGLE -> {
+                    val batches = withEmail.chunked(MAX_RECIPIENTS_PER_EMAIL)
+                    if (batches.size <= 1) {
+                        SendButton(
+                            text = if (isPreparing) "A preparar…" else "Abrir email para ${withEmail.size} lares",
+                            isPreparing = isPreparing,
+                            enabled = canSend,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { send(withEmail, state.letter) { completedCount = withEmail.size } }
+                    } else {
+                        Notice(
+                            "São ${withEmail.size} lares: para os emails não serem tratados como spam, são enviados em " +
+                                "${batches.size} grupos de até $MAX_RECIPIENTS_PER_EMAIL. Carregue em \"Enviar\" uma vez por grupo."
+                        )
+                        val batch = batches.getOrNull(batchIndex)
+                        if (batch == null) {
+                            Notice("Emails preparados para todos os ${withEmail.size} lares.")
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = { batchIndex = 0 }, shapes = ButtonDefaults.shapes()) { Text("Recomeçar") }
+                                Button(onClick = goToReplies, shapes = ButtonDefaults.shapes()) { Text("Ver respostas") }
+                            }
+                        } else {
+                            SendButton(
+                                text = if (isPreparing) "A preparar…" else "Abrir email: grupo ${batchIndex + 1} de ${batches.size} (${batch.size} lares)",
+                                isPreparing = isPreparing,
+                                enabled = canSend,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                send(batch, state.letter) {
+                                    batchIndex++
+                                    if (batchIndex >= batches.size) completedCount = withEmail.size
+                                }
+                            }
+                        }
+                    }
+                }
                 SendMode.INDIVIDUAL -> {
                     val current = withEmail.getOrNull(currentIndex)
                     if (current == null) {

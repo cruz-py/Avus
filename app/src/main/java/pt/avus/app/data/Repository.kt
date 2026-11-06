@@ -4,8 +4,6 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -18,14 +16,12 @@ import java.util.UUID
  */
 class Repository(private val context: Context) {
 
-    private val dir get() = context.filesDir
-    private val writeLock = Mutex()
+    private val store = FileStore(context.filesDir)
+    private val dir get() = store.dir
     private val documentsDir get() = File(dir, "documents").apply { mkdirs() }
 
     /** Converts data saved by older versions; call once before loading anything. */
-    suspend fun migrateLegacyStorage() = withContext(Dispatchers.IO) {
-        writeLock.withLock { LegacyStorageMigration.run(dir) }
-    }
+    suspend fun migrateLegacyStorage() = store.exclusive { LegacyStorageMigration.run(dir) }
 
     suspend fun loadHomes(): List<CareHome> = readArray("homes.json") { CareHome.fromJson(it) }
     suspend fun saveHomes(homes: List<CareHome>) = writeArray("homes.json", homes.map { it.toJson() })
@@ -36,9 +32,22 @@ class Repository(private val context: Context) {
     suspend fun loadDocuments(): List<Document> {
         val saved = readArray("documents.json") { Document.fromJson(it) }
         if (saved.isEmpty()) return DefaultDocuments.list
-        // Add new default documents that are not there yet (e.g. after an app update).
-        val ids = saved.map { it.id }.toSet()
-        return saved + DefaultDocuments.list.filter { it.id !in ids && !wasRemoved(it.id) }
+        val savedById = saved.associateBy { it.id }
+        val removed = removedDocumentIds()
+        // Default documents in the app's order and with its current wording, keeping the attached files;
+        // new defaults (e.g. after an app update) are added unless the user removed them.
+        val defaults = DefaultDocuments.list.mapNotNull { d ->
+            val s = savedById[d.id]
+            when {
+                s != null -> d.copy(file = s.file, originalName = s.originalName)
+                d.id in removed -> null
+                else -> d
+            }
+        }
+        val defaultIds = DefaultDocuments.list.map { it.id }.toSet()
+        // Retired defaults disappear, together with any file the user had attached to them.
+        saved.filter { it.id in DefaultDocuments.retiredIds }.forEach { d -> d.file?.let { deleteDocumentFile(it) } }
+        return defaults + saved.filter { it.id !in defaultIds && it.id !in DefaultDocuments.retiredIds }
     }
 
     suspend fun saveDocuments(d: List<Document>) {
@@ -47,11 +56,10 @@ class Repository(private val context: Context) {
         writeFile("removed_documents.json", JSONArray(removed).toString())
     }
 
-    private fun wasRemoved(id: String): Boolean {
-        val f = File(dir, "removed_documents.json")
-        if (!f.exists()) return false
-        val arr = runCatching { JSONArray(f.readText()) }.getOrNull() ?: return false
-        return (0 until arr.length()).any { arr.getString(it) == id }
+    private suspend fun removedDocumentIds(): Set<String> {
+        val text = store.read("removed_documents.json") ?: return emptySet()
+        val arr = runCatching { JSONArray(text) }.getOrNull() ?: return emptySet()
+        return (0 until arr.length()).map { arr.getString(it) }.toSet()
     }
 
     suspend fun loadProfile(): Profile = withContext(Dispatchers.IO) {
@@ -88,6 +96,28 @@ class Repository(private val context: Context) {
 
     suspend fun saveReminded(reminded: Map<String, Long>) = writeFile("reminders.json", JSONObject(reminded).toString())
 
+    suspend fun loadDistanceReference(): DistanceReference? = withContext(Dispatchers.IO) {
+        DistanceReference.parse(File(dir, "distance_reference.txt").takeIf { it.exists() }?.readText())
+    }
+
+    suspend fun saveDistanceReference(reference: DistanceReference?) {
+        if (reference == null) store.delete("distance_reference.txt") else writeFile("distance_reference.txt", reference.serialize())
+    }
+
+    /** Writes the family's data to [uri] as a .zip (see [Backup]); runs after any pending save. */
+    suspend fun exportBackup(uri: Uri) = store.exclusive {
+        context.contentResolver.openOutputStream(uri, "wt").use { out ->
+            Backup.export(dir, requireNotNull(out) { "Não foi possível criar o ficheiro." })
+        }
+    }
+
+    /** Replaces the family's data with the backup in [uri] (see [Backup]). */
+    suspend fun importBackup(uri: Uri) = store.exclusive {
+        context.contentResolver.openInputStream(uri).use { input ->
+            Backup.import(dir, requireNotNull(input) { "Não foi possível abrir o ficheiro." })
+        }
+    }
+
     fun hasAsset(name: String): Boolean = context.assets.list("")?.contains(name) == true
 
     suspend fun readAsset(name: String): ByteArray = withContext(Dispatchers.IO) {
@@ -98,9 +128,8 @@ class Repository(private val context: Context) {
         File(dir, "letter.txt").takeIf { it.exists() }?.readText()
     }
 
-    suspend fun saveCustomLetter(text: String?) = withContext(Dispatchers.IO) {
-        val f = File(dir, "letter.txt")
-        if (text == null) f.delete() else f.writeText(text)
+    suspend fun saveCustomLetter(text: String?) {
+        if (text == null) store.delete("letter.txt") else writeFile("letter.txt", text)
     }
 
     /** Copies the chosen file into private storage (the original may be moved/deleted later). */
@@ -130,12 +159,6 @@ class Repository(private val context: Context) {
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
             ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
 
-    suspend fun readUriBytes(uri: Uri): ByteArray = withContext(Dispatchers.IO) {
-        context.contentResolver.openInputStream(uri).use {
-            requireNotNull(it) { "Não foi possível abrir o ficheiro." }.readBytes()
-        }
-    }
-
     private suspend fun <T> readArray(name: String, f: (JSONObject) -> T): List<T> = withContext(Dispatchers.IO) {
         val file = File(dir, name)
         if (!file.exists()) return@withContext emptyList()
@@ -145,18 +168,6 @@ class Repository(private val context: Context) {
     private suspend fun writeArray(name: String, objects: List<JSONObject>) =
         writeFile(name, JSONArray(objects).toString())
 
-    /** Atomic write: write to a temp file, then replace. */
-    private suspend fun writeFile(name: String, text: String) = withContext(Dispatchers.IO) {
-        writeLock.withLock { writeAtomically(name, text) }
-    }
-
-    private fun writeAtomically(name: String, text: String) {
-        val tmp = File(dir, "$name.tmp")
-        tmp.writeText(text)
-        val target = File(dir, name)
-        if (!tmp.renameTo(target)) {
-            target.writeText(text)
-            tmp.delete()
-        }
-    }
+    /** Ordered, atomic write (see [FileStore]). */
+    private suspend fun writeFile(name: String, text: String) = store.write(name, text)
 }

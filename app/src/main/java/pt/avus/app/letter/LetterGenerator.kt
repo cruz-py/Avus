@@ -126,7 +126,7 @@ object LetterGenerator {
                 "NIF" to v(C.NIF),
                 "N.º de Segurança Social" to v(C.NISS),
                 "N.º de utente do SNS" to v(C.SNS_NUMBER),
-                "Cartão de Cidadão" to v(C.CITIZEN_CARD),
+                (if (C.usesBi(profile)) "Bilhete de Identidade" else "Cartão de Cidadão") to v(C.CITIZEN_CARD),
                 "Estado civil" to v(C.MARITAL_STATUS),
             ).filter { it.second.isNotBlank() }
             if (identification.isNotEmpty()) {
@@ -162,6 +162,8 @@ object LetterGenerator {
             v(C.RELATIVE_PHONE).takeIf { it.isNotBlank() }?.let { appendLine("Telemóvel: $it") }
             v(C.RELATIVE_EMAIL).takeIf { it.isNotBlank() }?.let { appendLine("Email: $it") }
             v(C.RELATIVE_ADDRESS).takeIf { it.isNotBlank() }?.let { appendLine("Morada: $it") }
+            v(C.RELATIVE_BEST_TIME).takeIf { it.isNotBlank() }?.let { appendLine("Melhor horário para contacto: $it") }
+            v(C.RELATIVE_OTHER_CONTACT).takeIf { it.isNotBlank() }?.let { appendLine("Outro contacto: $it") }
             appendLine()
             appendLine("Agradeço desde já a atenção dispensada e fico a aguardar o vosso contacto.")
             appendLine()
@@ -176,6 +178,21 @@ object LetterGenerator {
         0 -> ""
         1 -> parts[0]
         else -> parts.dropLast(1).joinToString(", ") + " e " + parts.last()
+    }
+
+    private val longDateLine = Regex(
+        "^\\d{1,2} de (janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro) de \\d{4}$"
+    )
+
+    /**
+     * A hand-edited letter keeps the date it had when it was edited. If its last line is still a date,
+     * bring it up to [today], so a letter edited yesterday is not sent with yesterday's date.
+     */
+    fun refreshDate(text: String, today: LocalDate = LocalDate.now()): String {
+        val lines = text.trimEnd().lines()
+        val last = lines.lastOrNull()?.trim() ?: return text
+        if (!longDateLine.matches(last)) return text
+        return (lines.dropLast(1) + today.format(longDateFormat)).joinToString("\n")
     }
 
     /** Adds the recipient at the top of the letter (when sending one email per home). */

@@ -152,7 +152,7 @@ fun SelectableAvatar(
     val content = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer
     Box(
         modifier
-            .size(44.dp)
+            .size(48.dp) // minimum touch target
             .clip(MorphShape(morph, progress))
             .background(container)
             .clickable(role = Role.Checkbox, onClickLabel = contentDescription, onClick = onToggle),

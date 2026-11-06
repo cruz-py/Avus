@@ -22,6 +22,9 @@ class LetterGeneratorTest {
         C.RELATIVE_NAME to "Rui Cruz",
         C.RELATIVE_RELATIONSHIP to "neto",
         C.RELATIVE_PHONE to "912345678",
+        C.CITIZEN_CARD to "01234567",
+        C.NIF to "123456789",
+        C.NISS to "11234567890",
     )
 
     @Test fun computesAge() {
@@ -47,6 +50,39 @@ class LetterGeneratorTest {
         assertTrue(letter.contains("da Sra. Manuel Silva"))
         assertTrue(letter.contains("internada"))
         assertTrue(letter.contains("A utente"))
+    }
+
+    @Test fun editedLetterGetsTodaysDate() {
+        val edited = "Exmos. Senhores,\n\nTexto alterado à mão.\n\nCom os melhores cumprimentos,\nRui Cruz\n5 de novembro de 2026"
+        val refreshed = LetterGenerator.refreshDate(edited, today)
+        assertTrue(refreshed.endsWith("Rui Cruz\n6 de novembro de 2026"))
+        assertTrue(refreshed.contains("Texto alterado à mão."))
+        // No date on the last line (the user removed or moved it): leave the text alone.
+        val noDate = "Exmos. Senhores,\nObrigado."
+        assertEquals(noDate, LetterGenerator.refreshDate(noDate, today))
+    }
+
+    @Test fun idDocumentLabelFollowsCcOrBi() {
+        assertTrue(LetterGenerator.generate(profile, emptyList(), emptyList(), today).contains("• Cartão de Cidadão: 01234567"))
+        val bi = LetterGenerator.generate(profile + (C.ID_DOCUMENT to C.ID_BI), emptyList(), emptyList(), today)
+        assertTrue(bi.contains("• Bilhete de Identidade: 01234567"))
+        assertFalse(bi.contains("Cartão de Cidadão:"))
+    }
+
+    @Test fun nifNissAndIdNumberAreRequired() {
+        assertEquals(
+            listOf("n.º do documento de identificação", "NIF", "NISS"),
+            LetterGenerator.missingFields(profile - C.CITIZEN_CARD - C.NIF - C.NISS),
+        )
+    }
+
+    @Test fun contactDetailsIncludeBestTimeAndOtherContact() {
+        val letter = LetterGenerator.generate(
+            profile + (C.RELATIVE_BEST_TIME to "dias úteis depois das 18h") + (C.RELATIVE_OTHER_CONTACT to "João (irmão), 913 456 789"),
+            emptyList(), emptyList(), today,
+        )
+        assertTrue(letter.contains("Melhor horário para contacto: dias úteis depois das 18h"))
+        assertTrue(letter.contains("Outro contacto: João (irmão), 913 456 789"))
     }
 
     @Test fun missingFields() {

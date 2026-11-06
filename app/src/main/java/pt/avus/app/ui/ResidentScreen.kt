@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -57,6 +60,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import pt.avus.app.data.Document
 import pt.avus.app.data.FieldType
@@ -68,6 +72,14 @@ import pt.avus.app.letter.Sender
 @Composable
 fun ResidentScreen(state: AppState, vm: AvusViewModel) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var menu by remember { mutableStateOf(false) }
+    var pendingImport by remember { mutableStateOf<android.net.Uri?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        uri?.let { vm.exportBackup(it) }
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        pendingImport = uri
+    }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -77,6 +89,19 @@ fun ResidentScreen(state: AppState, vm: AvusViewModel) {
             LargeFlexibleTopAppBar(
                 title = { Text("Utente") },
                 subtitle = state.profile[ProfileFields.NAME]?.takeIf { it.isNotBlank() }?.let { name -> { Text(name) } },
+                actions = {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Mais opções") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
+                        DropdownMenuItem(
+                            text = { Text("Exportar os meus dados") },
+                            onClick = { menu = false; exportLauncher.launch("avus-dados-${java.time.LocalDate.now()}.zip") },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Importar os meus dados") },
+                            onClick = { menu = false; importLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                        )
+                    }
+                },
                 colors = screenTopBarColors(),
                 scrollBehavior = scrollBehavior,
             )
@@ -85,24 +110,47 @@ fun ResidentScreen(state: AppState, vm: AvusViewModel) {
         Column(Modifier.fillMaxSize().padding(padding)) {
             // Connected button group instead of tabs (Material 3 Expressive).
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = ScreenPadding).padding(bottom = 12.dp),
+                // Same height for all three, even when "Documentos (0/11)" needs two lines.
+                Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = ScreenPadding).padding(bottom = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
             ) {
-                val labels = listOf("Ficha", "Documentos (${state.attachedDocuments.size}/${state.documents.size})")
+                val labels = listOf("Ficha", "Contacto", "Documentos (${state.attachedDocuments.size}/${state.visibleDocuments.size})")
                 labels.forEachIndexed { i, label ->
                     ToggleButton(
                         checked = selectedTab == i,
                         onCheckedChange = { selectedTab = i },
-                        modifier = Modifier.weight(1f),
-                        shapes = if (i == 0) ButtonGroupDefaults.connectedLeadingButtonShapes()
-                        else ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        shapes = when (i) {
+                            0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                            labels.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                            else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                        },
                         // Unchecked half on the bright surface, so it stands out from the tonal page.
                         colors = ToggleButtonDefaults.colors(containerColor = contentSurface),
-                    ) { Text(label) }
+                    ) { Text(label, textAlign = TextAlign.Center) }
                 }
             }
-            if (selectedTab == 0) ResidentForm(state, vm) else DocumentList(state, vm)
+            when (selectedTab) {
+                0 -> ResidentForm(state, vm)
+                1 -> ContactForm(state, vm)
+                else -> DocumentList(state, vm)
+            }
         }
+    }
+
+    pendingImport?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingImport = null },
+            title = { Text("Importar os dados?") },
+            text = {
+                Text(
+                    "Substitui a ficha, o contacto, os documentos, as respostas e os lares acrescentados neste telemóvel " +
+                        "pelos da cópia de segurança. A lista oficial de lares mantém-se."
+                )
+            },
+            confirmButton = { TextButton(onClick = { vm.importBackup(uri); pendingImport = null }) { Text("Importar") } },
+            dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancelar") } },
+        )
     }
 }
 
@@ -118,10 +166,34 @@ private fun ResidentForm(state: AppState, vm: AvusViewModel) {
                     "telemóvel e só são enviados nos emails que decidir enviar."
             )
         }
-        items(ProfileFields.sections, key = { it.title }) { section ->
+        items(ProfileFields.residentSections, key = { it.title }) { section ->
             SectionCard(section.title) {
                 section.fields.forEach { field ->
-                    ProfileFieldInput(field, state.profile[field.key].orEmpty()) { vm.updateField(field.key, it) }
+                    ProfileFieldInput(field, ProfileFields.labelFor(field, state.profile), state.profile[field.key].orEmpty()) { vm.updateField(field.key, it) }
+                }
+            }
+        }
+    }
+}
+
+/** The person who sends the letters: homes reply to them. */
+@Composable
+private fun ContactForm(state: AppState, vm: AvusViewModel) {
+    LazyColumn(
+        contentPadding = PaddingValues(start = ScreenPadding, end = ScreenPadding, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Notice(
+                "Os lares vão responder a esta pessoa. Estes contactos aparecem no fim da carta e, no envio para " +
+                    "vários lares, esta pessoa recebe uma cópia do email."
+            )
+        }
+        item {
+            val section = ProfileFields.contactSection
+            SectionCard(section.title) {
+                section.fields.forEach { field ->
+                    ProfileFieldInput(field, ProfileFields.labelFor(field, state.profile), state.profile[field.key].orEmpty()) { vm.updateField(field.key, it) }
                 }
             }
         }
@@ -130,9 +202,9 @@ private fun ResidentForm(state: AppState, vm: AvusViewModel) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ProfileFieldInput(field: ProfileField, value: String, onChange: (String) -> Unit) {
+private fun ProfileFieldInput(field: ProfileField, fieldLabel: String, value: String, onChange: (String) -> Unit) {
     val required = field.key in ProfileFields.requiredKeys
-    val label = field.label + if (required) " *" else ""
+    val label = fieldLabel + if (required) " *" else ""
     when (field.type) {
         FieldType.OPTIONS -> Column {
             Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -201,7 +273,7 @@ private fun DocumentList(state: AppState, vm: AvusViewModel) {
         if (uri != null && id != null) vm.attachDocument(id, uri)
         pendingDocId = null
     }
-    val total = vm.attachmentsSizeBytes()
+    val total = state.attachmentsSizeBytes
 
     fun attach(doc: Document) {
         pendingDocId = doc.id
@@ -241,11 +313,11 @@ private fun DocumentList(state: AppState, vm: AvusViewModel) {
                 )
             }
         }
-        itemsIndexed(state.documents, key = { _, doc -> doc.id }) { index, doc ->
+        itemsIndexed(state.visibleDocuments, key = { _, doc -> doc.id }) { index, doc ->
             DocumentRow(
                 doc = doc,
                 index = index,
-                count = state.documents.size,
+                count = state.visibleDocuments.size,
                 onAttach = { attach(doc) },
                 onView = { view(doc) },
                 onRemove = { vm.removeAttachment(doc.id) },

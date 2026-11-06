@@ -8,15 +8,18 @@ import pt.avus.app.letter.Sender
 import pt.avus.app.reminders.ReplyReminderWorker
 import pt.avus.app.letter.LetterGenerator
 import pt.avus.app.data.Contact
+import pt.avus.app.data.DefaultDocuments
 import pt.avus.app.data.Document
 import pt.avus.app.data.ContactStatus
-import pt.avus.app.data.ImportException
 import pt.avus.app.data.CsvImporter
 import pt.avus.app.data.CareHome
+import pt.avus.app.data.DistanceReference
 import pt.avus.app.data.FollowUp
 import pt.avus.app.data.OfficialList
 import pt.avus.app.data.Profile
 import pt.avus.app.data.Repository
+import pt.avus.app.data.normalizeForSearch
+import pt.avus.app.data.updateSuspending
 import pt.avus.app.data.ProfileFields
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -49,14 +52,20 @@ data class AppState(
     val officialListDate: String? = null,
     /** The official list is bundled in this build (it is generated, not kept in git). */
     val officialListAvailable: Boolean = false,
+    /** Sort homes by distance from this place (null = alphabetical). */
+    val distanceReference: DistanceReference? = null,
+    /** Total size of the attached documents (kept up to date in the background). */
+    val attachmentsSizeBytes: Long = 0,
 ) {
     val selectedHomes: List<CareHome> get() = homes.filter { it.id in selectedIds }
-    val attachedDocuments: List<Document> get() = documents.filter { it.isAttached }
+    /** Documents that apply to this resident (e.g. CC vs BI). */
+    val visibleDocuments: List<Document> get() = documents.filter { DefaultDocuments.appliesTo(it.id, profile) }
+    val attachedDocuments: List<Document> get() = visibleDocuments.filter { it.isAttached }
 
     val generatedLetter: String
-        get() = LetterGenerator.generate(profile, attachedDocuments, documents.filterNot { it.isAttached })
+        get() = LetterGenerator.generate(profile, attachedDocuments, visibleDocuments.filterNot { it.isAttached })
 
-    val letter: String get() = customLetter ?: generatedLetter
+    val letter: String get() = customLetter?.let { LetterGenerator.refreshDate(it) } ?: generatedLetter
 }
 
 class AvusViewModel(app: Application) : AndroidViewModel(app) {
@@ -75,20 +84,55 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch {
             repo.migrateLegacyStorage()
-            _state.value = AppState(
-                isLoaded = true,
-                homes = repo.loadHomes().sortedBy { it.name.lowercase() },
-                selectedIds = repo.loadSelection(),
-                profile = repo.loadProfile(),
-                documents = repo.loadDocuments(),
-                contacts = repo.loadContacts(),
-                customLetter = repo.loadCustomLetter(),
-                officialListDate = repo.loadOfficialListState()?.takeUnless { it.removed }?.date,
-                officialListAvailable = repo.hasAsset(OfficialList.CSV_ASSET) && repo.hasAsset(OfficialList.META_ASSET),
-            )
-            installOfficialList(force = false)
+            load()
+            refreshAttachmentsSize()
+            installOfficialList()
         }
         ReplyReminderWorker.schedule(app)
+    }
+
+    /** (Re)reads everything from storage. */
+    private suspend fun load() {
+        _state.value = AppState(
+            isLoaded = true,
+            homes = repo.loadHomes().sortedBy { normalizeForSearch(it.name) },
+            selectedIds = repo.loadSelection(),
+            profile = repo.loadProfile(),
+            documents = repo.loadDocuments(),
+            contacts = repo.loadContacts(),
+            customLetter = repo.loadCustomLetter(),
+            officialListDate = repo.loadOfficialListState()?.takeUnless { it.removed }?.date,
+            officialListAvailable = repo.hasAsset(OfficialList.CSV_ASSET) && repo.hasAsset(OfficialList.META_ASSET),
+            distanceReference = repo.loadDistanceReference(),
+        )
+    }
+
+    // ---------- Backup of the family's own data ----------
+
+    fun exportBackup(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                saveProfileJob?.join()
+                saveLetterJob?.join()
+                repo.exportBackup(uri)
+                showMessage("Dados exportados. O ficheiro contém documentos pessoais: guarde-o num local seguro.")
+            } catch (e: Exception) {
+                showMessage("Não foi possível exportar: ${e.message}")
+            }
+        }
+    }
+
+    fun importBackup(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                repo.importBackup(uri)
+                load()
+                refreshAttachmentsSize()
+                showMessage("Dados importados.")
+            } catch (e: Exception) {
+                showMessage(e.message ?: "Não foi possível importar o ficheiro.")
+            }
+        }
     }
 
     fun messageShown() { _message.value = null }
@@ -96,50 +140,15 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- Care homes ----------
 
-    fun importCsv(uri: Uri) {
-        _state.update { it.copy(isImporting = true) }
-        viewModelScope.launch {
-            try {
-                val bytes = repo.readUriBytes(uri)
-                val result = withContext(Dispatchers.Default) { CsvImporter.importBytes(bytes) }
-                if (result.homes.isEmpty()) {
-                    showMessage(
-                        if (result.filteredBySocialResponse)
-                            "Não foram encontradas ERPI no ficheiro (${result.rowsRead} linhas lidas)."
-                        else "Não foram encontrados lares no ficheiro."
-                    )
-                    return@launch
-                }
-                // Merge into the current list: allows importing several files (e.g. one per district).
-                val existingById = _state.value.homes.associateBy { it.id }.toMutableMap()
-                var newCount = 0
-                result.homes.forEach { home ->
-                    val existing = existingById[home.id]
-                    if (existing == null) newCount++
-                    // Do not overwrite an email the user added by hand.
-                    existingById[home.id] = if (existing != null && home.email.isBlank()) home.copy(email = existing.email) else home
-                }
-                val list = existingById.values.sortedBy { it.name.lowercase() }
-                _state.update { it.copy(homes = list) }
-                repo.saveHomes(list)
-                val withEmail = result.homes.count { it.hasEmail }
-                showMessage(
-                    "Importados ${result.homes.size} lares ($newCount novos, $withEmail com email)." +
-                        if (!result.filteredBySocialResponse) " Atenção: o ficheiro não indica a resposta social, por isso foram importadas todas as linhas." else ""
-                )
-            } catch (e: ImportException) {
-                showMessage(e.message ?: "Erro ao importar.")
-            } catch (e: Exception) {
-                showMessage("Não foi possível ler o ficheiro: ${e.message}")
-            } finally {
-                _state.update { it.copy(isImporting = false) }
-            }
-        }
-    }
-
     fun saveHome(home: CareHome) {
-        val newValue = if (home.id.isBlank()) home.copy(id = "manual-" + UUID.randomUUID(), manual = true) else home
-        val list = (_state.value.homes.filterNot { it.id == newValue.id } + newValue).sortedBy { it.name.lowercase() }
+        val before = _state.value.homes.firstOrNull { it.id == home.id }
+        val newValue = when {
+            home.id.isBlank() -> home.copy(id = "manual-" + UUID.randomUUID(), manual = true)
+            // Remember what the user corrected in an official home, so list updates keep it.
+            before != null && before.official -> home.markEditsComparedTo(before)
+            else -> home
+        }
+        val list = (_state.value.homes.filterNot { it.id == newValue.id } + newValue).sortedBy { normalizeForSearch(it.name) }
         _state.update { it.copy(homes = list) }
         viewModelScope.launch { repo.saveHomes(list) }
     }
@@ -155,22 +164,25 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- Official list ----------
 
-    /** Loads the official ERPI list bundled with the app (first launch, app update, or "restore"). */
-    private suspend fun installOfficialList(force: Boolean) {
+    /** Loads the official ERPI list bundled with the app (first launch, or a newer list in an app update). */
+    private suspend fun installOfficialList() {
         if (!_state.value.officialListAvailable) return // build without the generated list
         val meta = OfficialList.parseMeta(repo.readAsset(OfficialList.META_ASSET).decodeToString())
-        if (!force && !OfficialList.shouldInstall(repo.loadOfficialListState(), meta)) return
+        if (!OfficialList.shouldInstall(repo.loadOfficialListState(), meta)) return
         _state.update { it.copy(isImporting = true) }
         try {
             val official = withContext(Dispatchers.Default) {
                 CsvImporter.importBytes(repo.readAsset(OfficialList.CSV_ASSET)).homes
             }
-            val s = _state.value
-            val keep = s.selectedIds + s.contacts.map { it.homeId }
-            val merged = withContext(Dispatchers.Default) { OfficialList.merge(s.homes, official, keep) }
-            _state.update { it.copy(homes = merged, officialListDate = meta.date) }
-            repo.saveHomes(merged)
-            repo.saveOfficialListState(OfficialList.State(removed = false, date = meta.date))
+            // Merge against the current state; if the user changed something meanwhile (e.g. added a
+            // home while the list was loading), merge again rather than overwrite their change.
+            val updated = _state.updateSuspending { s ->
+                val keep = s.selectedIds + s.contacts.map { it.homeId }
+                val merged = withContext(Dispatchers.Default) { OfficialList.merge(s.homes, official, keep) }
+                s.copy(homes = merged, officialListDate = meta.date)
+            }
+            repo.saveHomes(updated.homes)
+            repo.saveOfficialListState(OfficialList.State(removed = false, date = meta.date, revision = meta.revision))
         } catch (e: Exception) {
             showMessage("Não foi possível carregar a lista oficial: ${e.message}")
         } finally {
@@ -178,28 +190,9 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun restoreOfficialList() {
-        viewModelScope.launch {
-            installOfficialList(force = true)
-            showMessage("Lista oficial carregada: ${_state.value.homes.count { it.official }} lares.")
-        }
-    }
-
-    fun deleteImportedHomes() {
-        val hadOfficial = _state.value.homes.any { it.official }
-        val list = _state.value.homes.filter { it.manual }
-        val ids = list.map { it.id }.toSet()
-        _state.update { it.copy(homes = list, selectedIds = it.selectedIds.intersect(ids)) }
-        if (hadOfficial) _state.update { it.copy(officialListDate = null) }
-        viewModelScope.launch {
-            repo.saveHomes(list)
-            repo.saveSelection(_state.value.selectedIds)
-            // Remember the choice, so app updates do not bring the list back by themselves.
-            if (hadOfficial) {
-                val date = repo.loadOfficialListState()?.date.orEmpty()
-                repo.saveOfficialListState(OfficialList.State(removed = true, date = date))
-            }
-        }
+    fun setDistanceReference(reference: DistanceReference?) {
+        _state.update { it.copy(distanceReference = reference) }
+        viewModelScope.launch { repo.saveDistanceReference(reference) }
     }
 
     fun toggleSelection(id: String) = setSelection(
@@ -218,6 +211,8 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateField(key: String, value: String) {
         _state.update { it.copy(profile = it.profile + (key to value)) }
+        // CC vs BI changes which documents apply, and so what gets attached.
+        if (key == ProfileFields.ID_DOCUMENT) refreshAttachmentsSize()
         // Save shortly after the user stops typing.
         saveProfileJob?.cancel()
         saveProfileJob = viewModelScope.launch {
@@ -263,6 +258,15 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
     private fun updateDocuments(f: (List<Document>) -> List<Document>) {
         _state.update { it.copy(documents = f(it.documents)) }
         viewModelScope.launch { repo.saveDocuments(_state.value.documents) }
+        refreshAttachmentsSize()
+    }
+
+    private fun refreshAttachmentsSize() {
+        val docs = _state.value.attachedDocuments
+        viewModelScope.launch {
+            val size = withContext(Dispatchers.IO) { docs.sumOf { documentFile(it)?.length() ?: 0L } }
+            _state.update { it.copy(attachmentsSizeBytes = size) }
+        }
     }
 
     fun documentFile(doc: Document) = doc.file?.let { repo.documentFile(it) }
@@ -302,9 +306,6 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
         )
         return listOf(Sender.shareableUri(app, pdf)) + uris
     }
-
-    fun attachmentsSizeBytes(): Long =
-        _state.value.attachedDocuments.sumOf { documentFile(it)?.length() ?: 0L }
 
     // ---------- Follow-up ----------
 
