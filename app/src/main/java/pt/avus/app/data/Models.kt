@@ -19,8 +19,24 @@ data class CareHome(
     val email: String = "",
     val capacity: String = "",
     val manual: Boolean = false,
+    /** Current number of residents, as reported to the Carta Social. */
+    val residents: String = "",
+    /** Date the home's Carta Social record was last updated (yyyy-MM-dd). */
+    val lastUpdated: String = "",
+    /** Facility id on cartasocial.pt (links to its page there). */
+    val cartaSocialId: String = "",
+    /** Came from the official list bundled with the app (see [OfficialList]). */
+    val official: Boolean = false,
 ) {
     val hasEmail: Boolean get() = email.isNotBlank()
+
+    val cartaSocialUrl: String?
+        get() = cartaSocialId.takeIf { it.isNotBlank() }?.let {
+            "https://www.cartasocial.pt/resultados-da-pesquisa?p_p_id=SocialLetterPortlet_WAR_cartasocialportlet" +
+                "&p_p_lifecycle=0&_SocialLetterPortlet_WAR_cartasocialportlet__facesViewIdRender=" +
+                "%2Fviews%2FsocialLetter%2Flist%2Fview%2Fequipment%2Fequipment_detail.xhtml" +
+                "&_SocialLetterPortlet_WAR_cartasocialportlet_idEquipment=$it"
+        }
 
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("name", name).put("owner", owner).put("legalForm", legalForm)
@@ -28,6 +44,8 @@ data class CareHome(
         .put("parish", parish).put("municipality", municipality).put("district", district)
         .put("phone", phone).put("email", email).put("capacity", capacity)
         .put("manual", manual)
+        .put("residents", residents).put("lastUpdated", lastUpdated).put("cartaSocialId", cartaSocialId)
+        .put("official", official)
 
     companion object {
         fun fromJson(o: JSONObject) = CareHome(
@@ -45,6 +63,10 @@ data class CareHome(
             email = o.optString("email"),
             capacity = o.optString("capacity"),
             manual = o.optBoolean("manual"),
+            residents = o.optString("residents"),
+            lastUpdated = o.optString("lastUpdated"),
+            cartaSocialId = o.optString("cartaSocialId"),
+            official = o.optBoolean("official"),
         )
 
         /** Stable id, so re-importing the same list does not duplicate homes. */

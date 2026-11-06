@@ -39,6 +39,9 @@ object CsvImporter {
         PHONE("Telefone", listOf("telefone", "telef", "contacto telefonico", "telemovel", "tel")),
         EMAIL("Email", listOf("email", "e-mail", "e mail", "correio eletronico", "correio electronico", "mail")),
         CAPACITY("Capacidade", listOf("capacidade", "lotacao")),
+        RESIDENTS("Utentes", listOf("utentes", "n utentes", "numero de utentes")),
+        LAST_UPDATED("Última atualização", listOf("ultima atualizacao", "data de atualizacao", "atualizado em")),
+        CARTA_SOCIAL_ID("ID Carta Social", listOf("id carta social", "id equipamento")),
         // Municipal open-data Carta Social format (e.g. Cascais): no social-response column,
         // but Sim/Não columns per target group ("d_pes_idos" = elderly people).
         ELDERLY("Pessoas idosas", listOf("d pes idos", "pessoas idosas")),
@@ -92,7 +95,9 @@ object CsvImporter {
             // Municipal files have no municipality/district columns: infer them from the parish.
             val place = municipalityForParish(value(CsvColumn.PARISH))
             val municipality = value(CsvColumn.MUNICIPALITY).ifBlank { place?.first.orEmpty() }
-            val id = CareHome.generateId(name, address, municipality)
+            val cartaSocialId = value(CsvColumn.CARTA_SOCIAL_ID)
+            // The Carta Social id survives renames and address fixes; otherwise derive one.
+            val id = if (cartaSocialId.isNotBlank()) "cs-$cartaSocialId" else CareHome.generateId(name, address, municipality)
             val home = CareHome(
                 id = id,
                 name = name,
@@ -107,6 +112,9 @@ object CsvImporter {
                 phone = cleanPhone(value(CsvColumn.PHONE)),
                 email = extractEmail(value(CsvColumn.EMAIL)),
                 capacity = value(CsvColumn.CAPACITY),
+                residents = value(CsvColumn.RESIDENTS),
+                lastUpdated = value(CsvColumn.LAST_UPDATED),
+                cartaSocialId = cartaSocialId,
             )
             // The same facility may appear several times (once per social response): merge the rows.
             byId[id] = byId[id]?.let { merge(it, home) } ?: home
@@ -183,6 +191,8 @@ object CsvImporter {
         phone = a.phone.ifBlank { b.phone },
         email = a.email.ifBlank { b.email },
         capacity = a.capacity.ifBlank { b.capacity },
+        residents = a.residents.ifBlank { b.residents },
+        lastUpdated = a.lastUpdated.ifBlank { b.lastUpdated },
     )
 
     private fun mapColumns(header: List<String>): Map<CsvColumn, Int> {

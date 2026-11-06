@@ -79,6 +79,10 @@ val LocalePT: Locale = Locale.forLanguageTag("pt-PT")
 
 fun formatDate(millis: Long): String = SimpleDateFormat("dd/MM/yyyy", LocalePT).format(Date(millis))
 
+/** "2026-11-06" -> "06/11/2026"; anything else is returned unchanged. */
+fun formatIsoDate(iso: String): String =
+    Regex("(\\d{4})-(\\d{2})-(\\d{2})").matchEntire(iso.trim())?.destructured?.let { (y, m, d) -> "$d/$m/$y" } ?: iso
+
 fun formatSize(bytes: Long): String = when {
     bytes >= 1_000_000 -> String.format(LocalePT, "%.1f MB", bytes / 1_000_000.0)
     bytes >= 1_000 -> "${bytes / 1_000} KB"

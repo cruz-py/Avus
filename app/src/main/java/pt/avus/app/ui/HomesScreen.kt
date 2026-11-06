@@ -50,6 +50,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumExtendedFloatingActionButton
@@ -80,6 +81,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import pt.avus.app.data.CareHome
+import pt.avus.app.data.OfficialList
 import pt.avus.app.data.normalizeForSearch
 import pt.avus.app.letter.Sender
 
@@ -146,6 +148,9 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
                         DropdownMenuItem(text = { Text("Importar lista (CSV)") }, onClick = { menu = false; openImport() })
                         DropdownMenuItem(text = { Text("Adicionar lar manualmente") }, onClick = { menu = false; homeToEdit = CareHome("", "") })
                         DropdownMenuItem(text = { Text("Onde obter a lista oficial") }, onClick = { menu = false; showHelp = true })
+                        if (state.homes.none { it.official }) {
+                            DropdownMenuItem(text = { Text("Restaurar lista oficial") }, onClick = { menu = false; vm.restoreOfficialList() })
+                        }
                         if (state.homes.any { !it.manual }) {
                             HorizontalDivider()
                             DropdownMenuItem(text = { Text("Apagar lista importada") }, onClick = { menu = false; confirmDelete = true })
@@ -167,16 +172,34 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (state.isImporting) LinearWavyProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding))
+            if (state.isImporting && state.homes.isNotEmpty()) LinearWavyProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding))
+
+            if (state.homes.isEmpty() && state.isImporting) {
+                // First launch: the bundled official list is being loaded.
+                Column(
+                    Modifier.fillMaxSize().padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    LoadingIndicator(Modifier.size(96.dp))
+                    Spacer(Modifier.height(16.dp))
+                    Text("A carregar a lista oficial de lares…", style = MaterialTheme.typography.titleMediumEmphasized)
+                }
+                return@Column
+            }
 
             if (state.homes.isEmpty()) {
                 EmptyState(
                     Icons.Filled.Home,
                     "Ainda não há lares na lista",
-                    "Importe a lista oficial de Estruturas Residenciais para Pessoas Idosas (Carta Social) " +
-                        "em formato CSV, ou adicione lares manualmente.",
+                    "Carregue a lista oficial de Estruturas Residenciais para Pessoas Idosas (Carta Social), " +
+                        "importe outra lista em CSV ou adicione lares manualmente.",
                 ) {
-                    Button(onClick = { openImport() }, shapes = ButtonDefaults.shapes()) { Text("Importar lista (CSV)") }
+                    Button(onClick = { vm.restoreOfficialList() }, enabled = !state.isImporting, shapes = ButtonDefaults.shapes()) {
+                        Text("Carregar lista oficial")
+                    }
+                    Spacer(Modifier.padding(4.dp))
+                    OutlinedButton(onClick = { openImport() }, shapes = ButtonDefaults.shapes()) { Text("Importar lista (CSV)") }
                     Spacer(Modifier.padding(4.dp))
                     OutlinedButton(onClick = { homeToEdit = CareHome("", "") }, shapes = ButtonDefaults.shapes()) {
                         Text("Adicionar lar manualmente")
@@ -207,7 +230,20 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
                     }
                 }
                 item(key = "selection") {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 8.dp).padding(horizontal = ScreenPadding), horizontalArrangement = Arrangement.End) {
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 8.dp).padding(horizontal = ScreenPadding),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val date = state.officialListDate
+                        if (date != null && state.homes.any { it.official }) {
+                            // Attribution of the bundled list, with the date it was collected.
+                            Text(
+                                "Fonte: ${OfficialList.SOURCE} · dados de ${formatIsoDate(date)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f).padding(start = 8.dp),
+                            )
+                        } else Spacer(Modifier.weight(1f))
                         if (state.selectedIds.isNotEmpty()) {
                             TextButton(onClick = { vm.clearSelection() }, shapes = ButtonDefaults.shapes()) { Text("Limpar") }
                         }
@@ -254,6 +290,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
             onDelete = { openedHomeId = null; vm.deleteHome(home.id) },
             onCall = { Sender.dial(context, home.phone) },
             onMap = { Sender.openMap(context, fullAddress(home)) },
+            onCartaSocial = { home.cartaSocialUrl?.let { Sender.openUrl(context, it) } },
         )
     }
 
@@ -268,15 +305,16 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit) {
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "A lista oficial dos lares licenciados é a Carta Social, do Ministério do Trabalho, " +
-                            "Solidariedade e Segurança Social. O portal permite pesquisar, mas não descarregar a lista, " +
-                            "por isso há duas formas de trazer os lares para a app:"
+                        "A app já inclui a lista oficial dos lares licenciados de Portugal continental, recolhida da " +
+                            "Carta Social, publicada pela Direção-Geral da Solidariedade e Segurança Social (DGSSS). " +
+                            "A data dos dados aparece por baixo dos filtros. Se apagou a lista, escolha " +
+                            "\"Restaurar lista oficial\" no menu."
                     )
                     Text(
-                        "• Com um ficheiro CSV — por exemplo, a lista nacional das ERPI recolhida da Carta Social, " +
-                            "ou os dados abertos de um município (como o portal dadosabertos.cascais.pt). " +
-                            "Escolha \"Importar lista (CSV)\": a app reconhece as colunas automaticamente e guarda " +
-                            "apenas os lares. Se o ficheiro vier em Excel (.xlsx), abra-o e use \"Guardar como… CSV\"."
+                        "• Com um ficheiro CSV — por exemplo, os dados abertos de um município (como o portal " +
+                            "dadosabertos.cascais.pt). Escolha \"Importar lista (CSV)\": a app reconhece as colunas " +
+                            "automaticamente e guarda apenas os lares. Se o ficheiro vier em Excel (.xlsx), abra-o e use " +
+                            "\"Guardar como… CSV\"."
                     )
                     Text(
                         "• À mão — na Carta Social, pesquise \"Pessoas Idosas\" → \"Estrutura Residencial para " +
@@ -413,6 +451,7 @@ private fun CareHomeDetails(
     onDelete: () -> Unit,
     onCall: () -> Unit,
     onMap: () -> Unit,
+    onCartaSocial: () -> Unit,
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -453,6 +492,8 @@ private fun CareHomeDetails(
                 "Freguesia" to home.parish,
                 "Distrito" to home.district,
                 "Capacidade" to home.capacity,
+                "Utentes" to home.residents,
+                "Atualizado na Carta Social" to home.lastUpdated.let { if (it.isBlank()) it else formatIsoDate(it) },
                 "Telefone" to home.phone,
                 "Email" to home.email.ifBlank { "— (pode acrescentar em Editar)" },
             ).filter { it.second.isNotBlank() }
@@ -462,6 +503,9 @@ private fun CareHomeDetails(
                     shapes = segmentedShapes(i, facts.size),
                     overlineContent = { Text(label) },
                 ) { Text(value) }
+            }
+            if (home.cartaSocialUrl != null) {
+                TextButton(onClick = onCartaSocial, shapes = ButtonDefaults.shapes()) { Text("Ver na Carta Social") }
             }
             Spacer(Modifier.height(16.dp))
             Button(

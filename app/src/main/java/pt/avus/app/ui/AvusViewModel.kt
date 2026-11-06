@@ -12,6 +12,7 @@ import pt.avus.app.data.ContactStatus
 import pt.avus.app.data.ImportException
 import pt.avus.app.data.CsvImporter
 import pt.avus.app.data.CareHome
+import pt.avus.app.data.OfficialList
 import pt.avus.app.data.Profile
 import pt.avus.app.data.Repository
 import pt.avus.app.data.ProfileFields
@@ -36,6 +37,8 @@ data class AppState(
     /** Letter text edited by hand (null = use the generated text). */
     val customLetter: String? = null,
     val isImporting: Boolean = false,
+    /** Collection date (yyyy-MM-dd) of the bundled official list, if it is installed. */
+    val officialListDate: String? = null,
 ) {
     val selectedHomes: List<CareHome> get() = homes.filter { it.id in selectedIds }
     val attachedDocuments: List<Document> get() = documents.filter { it.isAttached }
@@ -70,7 +73,9 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
                 documents = repo.loadDocuments(),
                 contacts = repo.loadContacts(),
                 customLetter = repo.loadCustomLetter(),
+                officialListDate = repo.loadOfficialListState()?.takeUnless { it.removed }?.date,
             )
+            installOfficialList(force = false)
         }
     }
 
@@ -136,13 +141,51 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---------- Official list ----------
+
+    /** Loads the official ERPI list bundled with the app (first launch, app update, or "restore"). */
+    private suspend fun installOfficialList(force: Boolean) {
+        val meta = OfficialList.parseMeta(repo.readAsset(OfficialList.META_ASSET).decodeToString())
+        if (!force && !OfficialList.shouldInstall(repo.loadOfficialListState(), meta)) return
+        _state.update { it.copy(isImporting = true) }
+        try {
+            val official = withContext(Dispatchers.Default) {
+                CsvImporter.importBytes(repo.readAsset(OfficialList.CSV_ASSET)).homes
+            }
+            val s = _state.value
+            val keep = s.selectedIds + s.contacts.map { it.homeId }
+            val merged = withContext(Dispatchers.Default) { OfficialList.merge(s.homes, official, keep) }
+            _state.update { it.copy(homes = merged, officialListDate = meta.date) }
+            repo.saveHomes(merged)
+            repo.saveOfficialListState(OfficialList.State(removed = false, date = meta.date))
+        } catch (e: Exception) {
+            showMessage("Não foi possível carregar a lista oficial: ${e.message}")
+        } finally {
+            _state.update { it.copy(isImporting = false) }
+        }
+    }
+
+    fun restoreOfficialList() {
+        viewModelScope.launch {
+            installOfficialList(force = true)
+            showMessage("Lista oficial carregada: ${_state.value.homes.count { it.official }} lares.")
+        }
+    }
+
     fun deleteImportedHomes() {
+        val hadOfficial = _state.value.homes.any { it.official }
         val list = _state.value.homes.filter { it.manual }
         val ids = list.map { it.id }.toSet()
         _state.update { it.copy(homes = list, selectedIds = it.selectedIds.intersect(ids)) }
+        if (hadOfficial) _state.update { it.copy(officialListDate = null) }
         viewModelScope.launch {
             repo.saveHomes(list)
             repo.saveSelection(_state.value.selectedIds)
+            // Remember the choice, so app updates do not bring the list back by themselves.
+            if (hadOfficial) {
+                val date = repo.loadOfficialListState()?.date.orEmpty()
+                repo.saveOfficialListState(OfficialList.State(removed = true, date = date))
+            }
         }
     }
 

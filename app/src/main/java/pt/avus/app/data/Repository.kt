@@ -72,6 +72,16 @@ class Repository(private val context: Context) {
 
     suspend fun saveSelection(ids: Set<String>) = writeFile("selection.json", JSONArray(ids.toList()).toString())
 
+    suspend fun loadOfficialListState(): OfficialList.State? = withContext(Dispatchers.IO) {
+        OfficialList.State.parse(File(dir, "official_list.txt").takeIf { it.exists() }?.readText())
+    }
+
+    suspend fun saveOfficialListState(state: OfficialList.State) = writeFile("official_list.txt", state.serialize())
+
+    suspend fun readAsset(name: String): ByteArray = withContext(Dispatchers.IO) {
+        context.assets.open(name).use { it.readBytes() }
+    }
+
     suspend fun loadCustomLetter(): String? = withContext(Dispatchers.IO) {
         File(dir, "letter.txt").takeIf { it.exists() }?.readText()
     }

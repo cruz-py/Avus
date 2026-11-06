@@ -97,5 +97,9 @@ class CsvImporterTest {
         assertEquals("7440-251", home.postalCode)
         assertEquals("gscunheira@sapo.pt", home.email)
         assertEquals("40", home.capacity)
+        assertEquals("31", home.residents)
+        assertEquals("2026-09-06", home.lastUpdated)
+        assertEquals("1806", home.cartaSocialId)
+        assertEquals("cs-1806", home.id)
     }
 }

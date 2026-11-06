@@ -1,15 +1,25 @@
 # ERPI list from the Carta Social
 
 The [Carta Social](https://www.cartasocial.pt) is the official register of social facilities
-in Portugal (run by GEP/MTSSS), but it has no export or API. `scrape_erpi.py` walks the
+in Portugal (run by DGSSS, under the Ministry of Labour, Solidarity and Social Security), but it has no export or API. `scrape_erpi.py` walks the
 portal's search (district → municipality → facility) and writes a CSV with every ERPI in
-mainland Portugal, ready to import in the app (**Lares** tab → **Importar lista (CSV)**).
+mainland Portugal. The app ships that CSV in `app/src/main/assets/` and loads it on first launch.
 
 ```bash
 pip install requests
 python3 scrape_erpi.py                         # all of mainland Portugal (~45–60 min)
 python3 scrape_erpi.py --district Lisboa       # a single district
 ```
+
+**Refreshing the list shipped with the app** (before a release):
+
+```bash
+rm -rf cache/lists                              # re-list homes (new/closed ones); keep cache/details to reuse pages
+python3 scrape_erpi.py --output ../../app/src/main/assets/erpi_portugal.csv
+```
+
+This also writes `erpi_portugal.properties` (collection date and count). Installed apps pick up
+the new list on update, unless the user deleted it.
 
 - Makes 1 request per second (`--delay` to slow down) and caches everything in `cache/`:
   if interrupted, run it again and it carries on where it stopped.
@@ -18,5 +28,6 @@ python3 scrape_erpi.py --district Lisboa       # a single district
 - The Azores and Madeira are not in the Carta Social (they have their own regional systems).
 - If the portal changes, the script stops with "Unexpected page structure".
 
-The data is public but belongs to GEP/MTSSS: use it to contact care homes, and don't
-redistribute it inside the app without permission.
+The data is public information published by DGSSS for citizens. The app credits the source
+("Fonte: Carta Social (DGSSS)") with the collection date; let cartasocial@seg-social.pt know
+the data is being reused. If a home or person asks to be removed, delete their row and refresh.
