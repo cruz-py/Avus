@@ -1,0 +1,2 @@
+• A ocupação de cada lar aparece agora como utentes e capacidade (ex.: 48/50 utentes), em vez de "vagas", porque os números da Carta Social podem estar desatualizados.
+• Saiu o filtro "Com vagas": vale a pena pedir vaga mesmo num lar que pareça cheio.
