@@ -51,13 +51,6 @@ data class CareHome(
 
     val hasEmail: Boolean get() = email.isNotBlank()
 
-    /** Free places reported to the Carta Social (capacity − residents, never negative); null if unknown. */
-    val freePlaces: Int?
-        get() {
-            val cap = capacity.trim().toIntOrNull() ?: return null
-            val res = residents.trim().toIntOrNull() ?: return null
-            return if (cap > 0) (cap - res).coerceAtLeast(0) else null
-        }
 
     /** Occupancy between 0 and 1, or null if unknown. */
     val occupancy: Float?

@@ -333,22 +333,15 @@ fun StatusDot(color: Color, modifier: Modifier = Modifier) {
     Box(modifier.size(8.dp).clip(CircleShape).background(color))
 }
 
-/** "N vagas" / "1 vaga" / "Lotado", from the residents and capacity reported to the Carta Social. */
-fun placesLabel(free: Int): String = when (free) {
-    0 -> "Lotado"
-    1 -> "1 vaga"
-    else -> "$free vagas"
-}
-
 /**
- * Thin bar showing how full a home is (residents / capacity, as reported to the Carta Social),
- * with the number of free places, or "Lotado". Draws nothing when the numbers are unknown.
+ * Thin bar showing how full a home is (residents / capacity, as reported to the Carta Social), with
+ * "48/50 utentes" next to it. Deliberately not phrased as free places: the numbers can be months old and
+ * places are filled from waiting lists, so "vagas" or "Lotado" would mislead. Draws nothing when unknown.
  */
 @Composable
-fun OccupancyBar(home: CareHome, modifier: Modifier = Modifier, thickness: Dp = 6.dp) {
+fun OccupancyBar(home: CareHome, modifier: Modifier = Modifier, thickness: Dp = 6.dp, showLabel: Boolean = true) {
     val occupancy = home.occupancy ?: return
-    val free = home.freePlaces ?: return
-    val color = if (free > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+    val color = MaterialTheme.colorScheme.primary
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         LinearProgressIndicator(
             progress = { occupancy },
@@ -357,7 +350,13 @@ fun OccupancyBar(home: CareHome, modifier: Modifier = Modifier, thickness: Dp = 
             trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             drawStopIndicator = {},
         )
-        Spacer(Modifier.width(10.dp))
-        Text(placesLabel(free), style = MaterialTheme.typography.labelMediumEmphasized, color = color)
+        if (showLabel) {
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "${home.residents.trim()}/${home.capacity.trim()} utentes",
+                style = MaterialTheme.typography.labelMediumEmphasized,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

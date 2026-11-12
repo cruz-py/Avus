@@ -6,7 +6,7 @@ The app's UI and the letters it writes are in European Portuguese (pt-PT); the c
 
 ## Features
 
-- **Lares (care homes)** — the official Carta Social list of ERPI ships with the app (other lists can be imported as CSV, e.g. Cascais's open data); shown as a list or a map (MapLibre + OpenFreeMap), with occupancy ("N vagas"), distance sorting ("Perto de…"), search, district/municipality filters, multi-select, and homes added or edited by hand.
+- **Lares (care homes)** — the official Carta Social list of ERPI ships with the app (other lists can be imported as CSV, e.g. Cascais's open data); shown as a list or a map (MapLibre + OpenFreeMap), with occupancy ("48/50 utentes", as reported to the Carta Social), distance sorting ("Perto de…"), search, district/municipality filters, multi-select, and homes added or edited by hand.
 - **Utente (resident)** — profile of the resident ("Ficha"), of the relative who contacts the homes ("Contacto"), checklist of the documents homes usually ask for, with attachments (PDF/photo).
 - **Enviar (send)** — generates the pre-registration letter (editable) and opens the email app with everything filled in: one email to all homes (in Bcc) or one per home; optional PDF of the letter.
 - **Respostas (replies)** — follow-up of each contact (sent, replied, visit, waiting list, place available…) with dated notes; replies can be shared into the app from any email/message app, the app asks how a call went, and a daily on-device reminder flags homes without an answer for a week.

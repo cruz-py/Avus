@@ -4,7 +4,7 @@ Escolha os lares, preencha a ficha uma vez, e a app prepara a carta de pré-insc
 
 ENCONTRAR LARES
 • Lista oficial incluída: todas as ERPI licenciadas de Portugal continental, segundo a Carta Social (DGSSS).
-• Lista ou mapa, com pesquisa e filtros por distrito, concelho e "Com vagas".
+• Lista ou mapa, com pesquisa e filtros por distrito e concelho.
 • Ocupação de cada lar (utentes e capacidade), tal como indicada à Carta Social.
 • "Perto de…": ordena os lares pela distância à morada do utente, do familiar, a um código postal ou a um concelho.
 • Acrescente lares que não estejam na lista.

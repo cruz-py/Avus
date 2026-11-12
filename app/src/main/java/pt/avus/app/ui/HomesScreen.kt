@@ -105,7 +105,6 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpen
     var municipality by rememberSaveable { mutableStateOf<String?>(null) }
     var onlyWithEmail by rememberSaveable { mutableStateOf(false) }
     var onlySelected by rememberSaveable { mutableStateOf(false) }
-    var onlyWithPlaces by rememberSaveable { mutableStateOf(false) }
     var showMap by rememberSaveable { mutableStateOf(false) }
     var maxKm by rememberSaveable { mutableStateOf<Int?>(null) }
     var pickReference by remember { mutableStateOf(false) }
@@ -139,7 +138,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpen
     val selectionFilter = if (onlySelected) state.selectedIds else null
 
     val filtered = remember(
-        state.homes, homeIndex, searchQuery, district, municipality, onlyWithEmail, onlyWithPlaces, selectionFilter,
+        state.homes, homeIndex, searchQuery, district, municipality, onlyWithEmail, selectionFilter,
         distances, maxKm,
     ) {
         val terms = normalizeForSearch(searchQuery).split(' ').filter { it.isNotBlank() }
@@ -147,7 +146,6 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpen
             (district == null || home.district.trim() == district) &&
                 (municipality == null || home.municipality.trim() == municipality) &&
                 (!onlyWithEmail || home.hasEmail) &&
-                (!onlyWithPlaces || (home.freePlaces ?: 0) > 0) &&
                 (selectionFilter == null || home.id in selectionFilter) &&
                 // Homes without a position (e.g. added by hand) are kept by the distance filter, at the end.
                 (maxKm == null || home.id !in distances || distances.getValue(home.id) <= maxKm!!) &&
@@ -195,7 +193,6 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpen
                 }
                 OptionPicker("Distrito", district, districts, "Todos os distritos", { district = it; municipality = null })
                 OptionPicker("Concelho", municipality, municipalities, "Todos os concelhos", { municipality = it })
-                CheckFilterChip(onlyWithPlaces, { onlyWithPlaces = !onlyWithPlaces }, "Com vagas")
                 CheckFilterChip(onlyWithEmail, { onlyWithEmail = !onlyWithEmail }, "Com email")
                 CheckFilterChip(onlySelected, { onlySelected = !onlySelected }, "Selecionados")
             }
@@ -380,8 +377,9 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpen
                             (state.officialListDate?.let { " Dados de ${formatIsoDate(it)}; a lista é atualizada com as novas versões da app." } ?: "")
                     )
                     Text(
-                        "A ocupação (utentes e vagas) é a que cada lar indicou à Carta Social e pode não estar atualizada: " +
-                            "confirme sempre com o lar."
+                        "A ocupação (utentes e capacidade) é a que cada lar indicou à Carta Social e pode não estar atualizada. " +
+                            "As vagas costumam ser preenchidas a partir da lista de espera: vale a pena pedir vaga mesmo num lar " +
+                            "que pareça cheio."
                     )
                     Text(
                         "Se um lar não estiver na lista, pode acrescentá-lo com \"Adicionar lar manualmente\". Se um contacto " +
@@ -607,7 +605,7 @@ private fun CareHomeDetails(
     }
 }
 
-/** Occupancy in the details sheet: residents of capacity, free places, and where the numbers come from. */
+/** Occupancy in the details sheet: residents of capacity and where the numbers come from. */
 @Composable
 private fun Occupancy(home: CareHome) {
     androidx.compose.material3.Surface(
@@ -621,7 +619,7 @@ private fun Occupancy(home: CareHome) {
                 "${home.residents} de ${home.capacity} utentes",
                 style = MaterialTheme.typography.titleMediumEmphasized,
             )
-            OccupancyBar(home, thickness = 10.dp)
+            OccupancyBar(home, thickness = 10.dp, showLabel = false)
             Text(
                 "Segundo a Carta Social" +
                     (if (home.lastUpdated.isNotBlank()) " (atualizado a ${formatIsoDate(home.lastUpdated)})" else "") +

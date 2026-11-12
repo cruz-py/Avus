@@ -49,10 +49,9 @@ class FollowUpTest {
 
     @Test fun occupancyFromCapacityAndResidents() {
         val home = CareHome("x", "x", capacity = "40", residents = "31")
-        assertEquals(9, home.freePlaces)
         assertEquals(31f / 40f, home.occupancy!!, 0.001f)
-        assertEquals(0, CareHome("x", "x", capacity = "40", residents = "42").freePlaces)   // over capacity = full
-        assertNull(CareHome("x", "x", capacity = "40").freePlaces)
+        assertEquals(1f, CareHome("x", "x", capacity = "40", residents = "42").occupancy!!, 0.001f)   // over capacity = full
+        assertNull(CareHome("x", "x", capacity = "40").occupancy)
         assertNull(CareHome("x", "x", capacity = "0", residents = "0").occupancy)
     }
 }

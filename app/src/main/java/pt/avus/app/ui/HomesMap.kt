@@ -83,8 +83,7 @@ fun HomesMap(
     val colors = remember(scheme) {
         mapOf(
             "selected" to scheme.tertiary.hex(),
-            "free" to scheme.primary.hex(),
-            "full" to scheme.outline.hex(),
+            "home" to scheme.primary.hex(),
             "cluster" to scheme.primaryContainer.hex(),
             "clusterText" to scheme.onPrimaryContainer.hex(),
             "stroke" to scheme.surface.hex(),
@@ -172,7 +171,7 @@ fun HomesMap(
                     CircleLayer(LAYER_CLUSTERS, SOURCE_HOMES).withFilter(has("point_count")).withProperties(
                         circleColor(colors.getValue("cluster")),
                         circleRadius(step(get("point_count"), literal(16f), stop(10, 20f), stop(50, 26f), stop(200, 32f))),
-                        circleStrokeColor(colors.getValue("free")),
+                        circleStrokeColor(colors.getValue("home")),
                         circleStrokeWidth(2f),
                     )
                 )
@@ -190,9 +189,8 @@ fun HomesMap(
                     CircleLayer(LAYER_POINTS, SOURCE_HOMES).withFilter(not(has("point_count"))).withProperties(
                         circleColor(
                             match(
-                                get("state"), literal(colors.getValue("full")),
+                                get("state"), literal(colors.getValue("home")),
                                 stop("selected", colors.getValue("selected")),
-                                stop("free", colors.getValue("free")),
                             )
                         ),
                         circleRadius(7f),
@@ -215,14 +213,7 @@ fun HomesMap(
         val features = located.map { h ->
             Feature.fromGeometry(Point.fromLngLat(h.longitude!!, h.latitude!!)).apply {
                 addStringProperty("id", h.id)
-                addStringProperty(
-                    "state",
-                    when {
-                        h.id in selectedIds -> "selected"
-                        (h.freePlaces ?: 0) > 0 -> "free"
-                        else -> "full"
-                    },
-                )
+                addStringProperty("state", if (h.id in selectedIds) "selected" else "home")
             }
         }
         s.getSourceAs<GeoJsonSource>(SOURCE_HOMES)?.setGeoJson(FeatureCollection.fromFeatures(features))
