@@ -80,6 +80,16 @@ class AvusViewModel(app: Application) : AndroidViewModel(app) {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
+    /**
+     * Search index for the Lares list, kept here so it survives tab switches: the screen leaves the
+     * composition when another tab is shown, and rebuilding it for ~2,600 homes made returning slow.
+     */
+    private var homeIndexCache: Pair<List<CareHome>, Map<String, HomeIndex>>? = null
+
+    fun homeIndex(homes: List<CareHome>): Map<String, HomeIndex> =
+        homeIndexCache?.takeIf { it.first === homes }?.second
+            ?: buildHomeIndex(homes).also { homeIndexCache = homes to it }
+
     private var saveProfileJob: Job? = null
     private var saveLetterJob: Job? = null
 

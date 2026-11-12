@@ -134,16 +134,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpen
 
     // Precomputed once per list: accent-free search text and the location line shown on each row,
     // so typing and scrolling do not re-normalise 2,600 homes.
-    val homeIndex: Map<String, HomeIndex> = remember(state.homes) {
-        state.homes.associate { home ->
-            home.id to HomeIndex(
-                searchText = normalizeForSearch(
-                    listOf(home.name, home.owner, home.locality, home.parish, home.municipality, home.postalCode).joinToString(" ")
-                ),
-                location = locationLine(home),
-            )
-        }
-    }
+    val homeIndex: Map<String, HomeIndex> = remember(state.homes) { vm.homeIndex(state.homes) }
     // The selection only affects the list when "Selecionados" is on.
     val selectionFilter = if (onlySelected) state.selectedIds else null
 
@@ -417,7 +408,17 @@ fun locationLine(home: CareHome): String =
         .distinctBy { normalizeForSearch(it) }.joinToString(" · ")
 
 /** Per-home values precomputed for the list (see `homeIndex` in [HomesScreen]). */
-private data class HomeIndex(val searchText: String, val location: String)
+data class HomeIndex(val searchText: String, val location: String)
+
+fun buildHomeIndex(homes: List<CareHome>): Map<String, HomeIndex> =
+    homes.associate { home ->
+        home.id to HomeIndex(
+            searchText = normalizeForSearch(
+                listOf(home.name, home.owner, home.locality, home.parish, home.municipality, home.postalCode).joinToString(" ")
+            ),
+            location = locationLine(home),
+        )
+    }
 
 /** Pill-shaped search field on a tonal surface, as in Android 16/17 system apps. */
 @Composable

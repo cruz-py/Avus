@@ -66,7 +66,6 @@ import pt.avus.app.data.Document
 import pt.avus.app.data.FieldType
 import pt.avus.app.data.ProfileField
 import pt.avus.app.data.ProfileFields
-import pt.avus.app.letter.LetterGenerator
 import pt.avus.app.letter.Sender
 
 @Composable
@@ -188,51 +187,26 @@ private fun ProfileFieldInput(field: ProfileField, fieldLabel: String, value: St
                 }
             }
         }
+        FieldType.DATE -> DateFieldInput(label, value, field.hint, onChange, Modifier.fillMaxWidth())
         else -> {
             val keyboard = when (field.type) {
                 FieldType.EMAIL -> KeyboardOptions(keyboardType = KeyboardType.Email)
                 FieldType.PHONE -> KeyboardOptions(keyboardType = KeyboardType.Phone)
                 FieldType.NUMBER -> KeyboardOptions(keyboardType = KeyboardType.Number)
-                FieldType.DATE -> KeyboardOptions(keyboardType = KeyboardType.Number)
                 else -> KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
             }
-            val hint = when (field.type) {
-                FieldType.DATE -> {
-                    val age = LetterGenerator.age(value)
-                    when {
-                        value.isBlank() -> field.hint
-                        age != null -> "$age anos"
-                        else -> "Use o formato dd/mm/aaaa"
-                    }
-                }
-                else -> field.hint
-            }
-            val isError = field.type == FieldType.DATE && value.isNotBlank() && value.length >= 8 && LetterGenerator.age(value) == null
+            val hint = field.hint
             OutlinedTextField(
                 value = value,
-                onValueChange = { newValue -> onChange(if (field.type == FieldType.DATE) formatTypedDate(value, newValue) else newValue) },
+                onValueChange = onChange,
                 label = { Text(label) },
                 supportingText = if (hint.isNotBlank()) ({ Text(hint) }) else null,
-                isError = isError,
                 singleLine = field.type != FieldType.MULTILINE,
                 minLines = if (field.type == FieldType.MULTILINE) 2 else 1,
                 keyboardOptions = keyboard,
                 shape = MaterialTheme.shapes.large,
                 modifier = Modifier.fillMaxWidth(),
             )
-        }
-    }
-}
-
-/** Inserts the slashes automatically: "01021940" -> "01/02/1940". */
-private fun formatTypedDate(previous: String, newValue: String): String {
-    if (newValue.length < previous.length) return newValue // deleting: do not interfere
-    val digits = newValue.filter { it.isDigit() }.take(8)
-    if (newValue.any { it == '/' } && newValue.length <= 10) return newValue.take(10)
-    return buildString {
-        digits.forEachIndexed { i, c ->
-            if (i == 2 || i == 4) append('/')
-            append(c)
         }
     }
 }

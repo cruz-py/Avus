@@ -209,7 +209,9 @@ internal fun JSONObject.optDoubleOrNull(name: String): Double? =
 internal inline fun <T> JSONArray.mapObjects(f: (JSONObject) -> T): List<T> =
     (0 until length()).map { f(getJSONObject(it)) }
 
+private val combiningMarks = Regex("\\p{Mn}+")
+
 /** Lower-case and accent-free, for searching ("Évora" == "evora"). */
 fun normalizeForSearch(text: String): String =
     java.text.Normalizer.normalize(text.trim().lowercase(), java.text.Normalizer.Form.NFD)
-        .replace(Regex("\\p{Mn}+"), "")
+        .replace(combiningMarks, "")
