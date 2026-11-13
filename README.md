@@ -13,7 +13,7 @@ The app's UI and the letters it writes are in European Portuguese (pt-PT); the c
 
 ## Public page
 
-User-facing information lives in the public repository **[cruz-py/Avus-app](https://github.com/cruz-py/Avus-app)**: what the app does, APK releases, the privacy policy (`PRIVACIDADE.md`, linked from the app's Definições) and bug reports (Issues). This repository (`Avus`, the code) stays private.
+User-facing information lives in the public repository **[cruz-py/Avus-app](https://github.com/cruz-py/Avus-app)**: what the app does, APK releases, the privacy policy (`PRIVACIDADE.md`, linked from the app's Definições) and bug reports (Issues). This repository holds the source code; please open issues on Avus-app.
 
 ## Privacy
 
@@ -53,3 +53,16 @@ Code layout (`app/src/main/java/pt/avus/app/`):
 - `data/` — models, JSON storage (`Repository`), CSV import (`CsvImporter`), profile fields
 - `letter/` — letter text (`LetterGenerator`), PDF and email/phone/map intents (`Sender`)
 - `ui/` — Compose screens and the `AvusViewModel`
+
+## License
+
+Copyright (C) 2026 cruz-py
+
+Avus is free software: you can redistribute it and/or modify it under the terms of the
+[GNU General Public License](LICENSE) as published by the Free Software Foundation, either
+version 3 of the License, or (at your option) any later version. It is distributed WITHOUT
+ANY WARRANTY; see the license for details.
+
+The care home data comes from the [Carta Social](https://www.cartasocial.pt) (DGSSS) and is not
+covered by this license. The Avus name and icon identify the official builds; please use a
+different name and icon for modified versions.
