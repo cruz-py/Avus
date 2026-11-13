@@ -15,6 +15,8 @@ The app's UI and the letters it writes are in European Portuguese (pt-PT); the c
 
 User-facing information lives in the public repository **[cruz-py/Avus-app](https://github.com/cruz-py/Avus-app)**: what the app does, APK releases, the privacy policy (`PRIVACIDADE.md`, linked from the app's Definições) and bug reports (Issues). This repository holds the source code; please open issues on Avus-app.
 
+This repository does not accept pull requests. To report a bug or suggest a change, please open an issue on [Avus-app](https://github.com/cruz-py/Avus-app/issues).
+
 ## Privacy
 
 All data stays on the phone (backups disabled). Nothing is sent until the user taps "Send" in their own email app.
