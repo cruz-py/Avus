@@ -1,0 +1,2 @@
+• O Avus passou a ser de código aberto (licença GPL-3.0): qualquer pessoa pode verificar o que a app faz com os seus dados.
+• Nova ligação "Código-fonte" em Definições.
