@@ -24,6 +24,7 @@ ACOMPANHAR AS RESPOSTAS
 PRIVADO
 • Sem contas, sem anúncios, sem rastreio.
 • Os seus dados e documentos ficam apenas no telemóvel. Pode exportar uma cópia de segurança para onde quiser.
+• Código aberto (licença GPL-3.0): qualquer pessoa pode verificar o que a app faz em github.com/cruz-py/Avus
 
 IMPORTANTE
 O Avus não é um serviço de colocação nem intermediário, e não tem qualquer ligação aos lares nem à Segurança Social. A ocupação e os contactos dos lares são os indicados à Carta Social e podem estar desatualizados: confirme sempre com o lar. Açores e Madeira não estão incluídos.
