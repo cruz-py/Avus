@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
@@ -70,6 +71,7 @@ import pt.avus.app.reminders.ReplyReminderWorker
 const val PROJECT_URL = "https://github.com/cruz-py/Avus-app"
 const val PRIVACY_URL = "$PROJECT_URL/blob/main/PRIVACIDADE.md"
 const val ISSUES_URL = "$PROJECT_URL/issues"
+const val SOURCE_URL = "https://github.com/cruz-py/Avus"
 private const val CARTA_SOCIAL_URL = "https://www.cartasocial.pt"
 private const val OSM_COPYRIGHT_URL = "https://www.openstreetmap.org/copyright"
 
@@ -227,38 +229,43 @@ fun SettingsScreen(state: AppState, vm: AvusViewModel, snackbar: SnackbarHostSta
             // ---------- About ----------
             item { ListHeader("Sobre", Modifier.padding(top = 12.dp)) }
             item {
-                SettingsRow(Icons.Filled.Info, "Avus", if (version.isNotBlank()) "Versão $version" else "", 0, 7)
+                SettingsRow(Icons.Filled.Info, "Avus", if (version.isNotBlank()) "Versão $version" else "", 0, 8)
             }
             item {
-                SettingsRow(Icons.Filled.Star, "Página do projeto", "Novidades e transferências · ${PROJECT_URL.removePrefix("https://")}", 1, 7) {
+                SettingsRow(Icons.Filled.Star, "Página do projeto", "Novidades e transferências · ${PROJECT_URL.removePrefix("https://")}", 1, 8) {
                     Sender.openUrl(context, PROJECT_URL)
                 }
             }
             item {
-                SettingsRow(Icons.Filled.Lock, "Política de privacidade", "O que a app guarda e o que nunca sai do telemóvel.", 2, 7) {
+                SettingsRow(Icons.Filled.Lock, "Política de privacidade", "O que a app guarda e o que nunca sai do telemóvel.", 2, 8) {
                     Sender.openUrl(context, PRIVACY_URL)
                 }
             }
             item {
-                SettingsRow(Icons.Filled.Warning, "Reportar um problema", "Erros e sugestões, na página do projeto.", 3, 7) {
+                SettingsRow(Icons.Filled.Build, "Código-fonte", "Software livre (GPL-3.0) · ${SOURCE_URL.removePrefix("https://")}", 3, 8) {
+                    Sender.openUrl(context, SOURCE_URL)
+                }
+            }
+            item {
+                SettingsRow(Icons.Filled.Warning, "Reportar um problema", "Erros e sugestões, na página do projeto.", 4, 8) {
                     Sender.openUrl(context, ISSUES_URL)
                 }
             }
             item {
                 val list = state.officialListDate?.let { " · lista de ${formatIsoDate(it)}" }.orEmpty()
-                SettingsRow(Icons.Filled.Home, "Dados dos lares", "${OfficialList.SOURCE}$list", 4, 7) {
+                SettingsRow(Icons.Filled.Home, "Dados dos lares", "${OfficialList.SOURCE}$list", 5, 8) {
                     Sender.openUrl(context, CARTA_SOCIAL_URL)
                 }
             }
             item {
-                SettingsRow(Icons.Filled.LocationOn, "Mapas", "© Contribuidores do OpenStreetMap · OpenFreeMap · MapLibre", 5, 7) {
+                SettingsRow(Icons.Filled.LocationOn, "Mapas", "© Contribuidores do OpenStreetMap · OpenFreeMap · MapLibre", 6, 8) {
                     Sender.openUrl(context, OSM_COPYRIGHT_URL)
                 }
             }
             item {
                 SettingsRow(
                     Icons.Filled.Share, "Componentes de código aberto",
-                    "AndroidX e Jetpack Compose (Apache 2.0) · MapLibre (BSD) · dados do mapa © OpenStreetMap (ODbL)", 6, 7,
+                    "AndroidX e Jetpack Compose (Apache 2.0) · MapLibre (BSD) · dados do mapa © OpenStreetMap (ODbL)", 7, 8,
                 )
             }
         }
