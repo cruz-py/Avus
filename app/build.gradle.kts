@@ -39,9 +39,11 @@ android {
     buildTypes {
         release {
             if (releaseStoreFile != null) signingConfig = signingConfigs.getByName("release")
+            // R8 across the whole app. Do NOT restrict it with packageScope: with androidx/kotlin/kotlinx only, R8 can
+            // move part of kotlin.text (StringsKt) out of its package and the app crashes on launch with an
+            // IllegalAccessError (it happened in Domuscan; Avus was not affected yet, but any build could be).
             optimization {
                 enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
             }
         }
     }
