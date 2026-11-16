@@ -1,0 +1,1 @@
+• Melhorias de estabilidade na compilação da app, para evitar falhas ao abrir.
