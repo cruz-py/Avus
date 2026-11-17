@@ -1,0 +1,1 @@
+• Corrigida uma falha que podia fechar a app ao percorrer a lista de lares.
