@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.lazy.LazyListLayoutInfo
+import androidx.compose.foundation.lazy.LazyListPrefetchScope
+import androidx.compose.foundation.lazy.LazyListPrefetchStrategy
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.layout.NestedPrefetchScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -360,3 +367,24 @@ fun OccupancyBar(home: CareHome, modifier: Modifier = Modifier, thickness: Dp = 
         }
     }
 }
+
+/**
+ * Prefetch strategy that never prefetches.
+ *
+ * Compose 1.12.1 crashes ("LayoutNode N not found in RectList") when a prefetched, not yet attached
+ * Material list item is pre-measured: ListItem reads a baseline alignment line of its content, which
+ * places the content's Text before the node is known to RectManager. Seen on a Redmi (Android 13)
+ * while scrolling the Lares list. Without prefetch, rows are only measured once attached.
+ * Revisit when Compose is upgraded.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private object NoPrefetch : LazyListPrefetchStrategy {
+    override fun LazyListPrefetchScope.onScroll(delta: Float, layoutInfo: LazyListLayoutInfo) {}
+    override fun LazyListPrefetchScope.onVisibleItemsUpdated(layoutInfo: LazyListLayoutInfo) {}
+    override fun NestedPrefetchScope.onNestedPrefetch(firstVisibleItemIndex: Int) {}
+}
+
+/** [rememberLazyListState] without prefetching; use it for every LazyColumn (see [NoPrefetch]). */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun rememberListStateWithoutPrefetch(): LazyListState = rememberLazyListState(prefetchStrategy = NoPrefetch)

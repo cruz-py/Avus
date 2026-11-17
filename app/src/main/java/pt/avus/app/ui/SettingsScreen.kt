@@ -137,6 +137,7 @@ fun SettingsScreen(state: AppState, vm: AvusViewModel, snackbar: SnackbarHostSta
     ) { padding ->
         LazyColumn(
             Modifier.fillMaxSize().padding(padding),
+            state = rememberListStateWithoutPrefetch(),
             contentPadding = PaddingValues(start = ScreenPadding, end = ScreenPadding, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
         ) {

@@ -130,6 +130,7 @@ fun ResidentScreen(state: AppState, vm: AvusViewModel, onOpenSettings: () -> Uni
 @Composable
 private fun ResidentForm(state: AppState, vm: AvusViewModel) {
     LazyColumn(
+        state = rememberListStateWithoutPrefetch(),
         contentPadding = PaddingValues(start = ScreenPadding, end = ScreenPadding, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -153,6 +154,7 @@ private fun ResidentForm(state: AppState, vm: AvusViewModel) {
 @Composable
 private fun ContactForm(state: AppState, vm: AvusViewModel) {
     LazyColumn(
+        state = rememberListStateWithoutPrefetch(),
         contentPadding = PaddingValues(start = ScreenPadding, end = ScreenPadding, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -241,6 +243,7 @@ private fun DocumentList(state: AppState, vm: AvusViewModel) {
     }
 
     LazyColumn(
+        state = rememberListStateWithoutPrefetch(),
         contentPadding = PaddingValues(start = ScreenPadding, end = ScreenPadding, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
     ) {

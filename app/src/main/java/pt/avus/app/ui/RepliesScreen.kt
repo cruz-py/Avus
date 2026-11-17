@@ -139,6 +139,7 @@ fun RepliesScreen(state: AppState, vm: AvusViewModel, goToHomes: () -> Unit, onO
 
         LazyColumn(
             Modifier.fillMaxSize().padding(padding),
+            state = rememberListStateWithoutPrefetch(),
             contentPadding = PaddingValues(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
         ) {
