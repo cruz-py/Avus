@@ -1,0 +1,2 @@
+• Os filtros da lista de lares (distrito, concelho, pesquisa…) já não se perdem ao mudar de separador.
+• Melhorias de estabilidade na compilação da app, para evitar falhas ao abrir.
