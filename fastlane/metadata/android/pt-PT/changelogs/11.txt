@@ -1,0 +1,1 @@
+• Corrigida a falha que fechava a app ao percorrer a lista de lares depois de mudar o filtro de concelho.
