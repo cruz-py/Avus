@@ -204,7 +204,7 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpen
                 if (date != null && state.homes.any { it.official }) {
                     // Attribution of the bundled list, with the date it was collected.
                     Text(
-                        "Fonte: ${OfficialList.SOURCE} · dados de ${formatIsoDate(date)}",
+                        "Fonte: ${OfficialList.SOURCE} · lista recolhida a ${formatIsoDate(date)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f).padding(start = 8.dp),
@@ -374,10 +374,11 @@ fun HomesScreen(state: AppState, vm: AvusViewModel, goToSend: () -> Unit, onOpen
                     Text(
                         "A lista inclui os lares licenciados (Estruturas Residenciais para Pessoas Idosas, ERPI) de Portugal " +
                             "continental, publicados na Carta Social pela Direção-Geral da Solidariedade e Segurança Social (DGSSS)." +
-                            (state.officialListDate?.let { " Dados de ${formatIsoDate(it)}; a lista é atualizada com as novas versões da app." } ?: "")
+                            (state.officialListDate?.let { " Lista recolhida a ${formatIsoDate(it)}; é atualizada com as novas versões da app." } ?: "")
                     )
                     Text(
-                        "A ocupação (utentes e capacidade) é a que cada lar indicou à Carta Social e pode não estar atualizada. " +
+                        "A ocupação (utentes e capacidade) é a que cada lar indicou à Carta Social na atualização anual, com a " +
+                            "situação a 31 de dezembro, e pode já não corresponder à atual. " +
                             "As vagas costumam ser preenchidas a partir da lista de espera: vale a pena pedir vaga mesmo num lar " +
                             "que pareça cheio."
                     )
@@ -565,9 +566,6 @@ private fun CareHomeDetails(
                 "Freguesia" to home.parish,
                 "Distrito" to home.district,
                 "Capacidade" to home.capacity.takeIf { home.occupancy == null }.orEmpty(),
-                "Atualizado na Carta Social" to home.lastUpdated.takeIf { home.occupancy == null }.orEmpty().let {
-                    if (it.isBlank()) it else formatIsoDate(it)
-                },
                 "Telefone" to home.phone,
                 "Email" to home.email.ifBlank { "— (pode acrescentar em Editar)" },
             ).filter { it.second.isNotBlank() }
@@ -621,9 +619,9 @@ private fun Occupancy(home: CareHome) {
             )
             OccupancyBar(home, thickness = 10.dp, showLabel = false)
             Text(
-                "Segundo a Carta Social" +
-                    (if (home.lastUpdated.isNotBlank()) " (atualizado a ${formatIsoDate(home.lastUpdated)})" else "") +
-                    ". Confirme sempre com o lar.",
+                // Capacity and residents are the situation on 31 December, as reported in the Carta Social's
+                // annual update; the record's "last updated" date is unrelated (backups, contact changes).
+                "Segundo a Carta Social, situação a 31 de dezembro. Confirme sempre com o lar.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
