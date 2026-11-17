@@ -350,17 +350,6 @@ private fun DocumentRow(
                 )
             }
         },
-        supportingContent = {
-            Column {
-                if (doc.description.isNotBlank()) Text(doc.description)
-                doc.originalName?.let {
-                    Text(it, style = MaterialTheme.typography.labelMediumEmphasized, color = MaterialTheme.colorScheme.primary)
-                }
-                if (!doc.isAttached) {
-                    Text("Anexar ficheiro", style = MaterialTheme.typography.labelMediumEmphasized, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-        },
         trailingContent = {
             Box {
                 IconButton(onClick = { menu = true }) {
@@ -380,7 +369,19 @@ private fun DocumentRow(
             }
         },
     ) {
-        Text(doc.name, style = MaterialTheme.typography.titleSmallEmphasized)
+        // Not supportingContent: see HeadlineAndSupporting (crash when scrolling a list of these).
+        HeadlineAndSupporting(
+            supportingColor = segmentedColors().supportingContentColor,
+            headline = { Text(doc.name, style = MaterialTheme.typography.titleSmallEmphasized) },
+        ) {
+            if (doc.description.isNotBlank()) Text(doc.description)
+            doc.originalName?.let {
+                Text(it, style = MaterialTheme.typography.labelMediumEmphasized, color = MaterialTheme.colorScheme.primary)
+            }
+            if (!doc.isAttached) {
+                Text("Anexar ficheiro", style = MaterialTheme.typography.labelMediumEmphasized, color = MaterialTheme.colorScheme.primary)
+            }
+        }
     }
     if (confirmDelete) {
         AlertDialog(

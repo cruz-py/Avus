@@ -294,52 +294,54 @@ private fun ContactRow(
         modifier = modifier,
         verticalAlignment = Alignment.Top,
         leadingContent = { ShapeIcon(style.icon, shape = style.shape, containerColor = style.container, contentColor = style.content) },
-        supportingContent = {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                home?.let { locationLine(it) }?.takeIf { it.isNotBlank() }?.let { Text(it) }
+    ) {
+        // Not supportingContent: see HeadlineAndSupporting (crash when scrolling a list of these).
+        HeadlineAndSupporting(
+            supportingColor = segmentedColors().supportingContentColor,
+            headline = { Text(home?.name ?: "Lar removido da lista", style = MaterialTheme.typography.titleSmallEmphasized) },
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            home?.let { locationLine(it) }?.takeIf { it.isNotBlank() }?.let { Text(it) }
+            Text(
+                "Enviado a ${formatDate(contact.sentAt)}" + when {
+                    daysAgo == 0L -> " (hoje)"
+                    daysAgo == 1L -> " (há 1 dia)"
+                    else -> " (há $daysAgo dias)"
+                },
+            )
+            if (contact.status == ContactStatus.SENT && daysAgo >= 7) {
                 Text(
-                    "Enviado a ${formatDate(contact.sentAt)}" + when {
-                        daysAgo == 0L -> " (hoje)"
-                        daysAgo == 1L -> " (há 1 dia)"
-                        else -> " (há $daysAgo dias)"
-                    },
+                    "Sem resposta há mais de uma semana — vale a pena telefonar.",
+                    style = MaterialTheme.typography.labelMediumEmphasized,
+                    color = MaterialTheme.colorScheme.error,
                 )
-                if (contact.status == ContactStatus.SENT && daysAgo >= 7) {
-                    Text(
-                        "Sem resposta há mais de uma semana — vale a pena telefonar.",
-                        style = MaterialTheme.typography.labelMediumEmphasized,
-                        color = MaterialTheme.colorScheme.error,
+            }
+            if (contact.notes.isNotBlank()) {
+                Text(contact.notes, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    AssistChip(
+                        onClick = { menu = true },
+                        label = { Text(contact.status.label) },
+                        leadingIcon = { StatusDot(statusColor(contact.status)) },
+                        trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null) },
+                        colors = AssistChipDefaults.assistChipColors(labelColor = statusColor(contact.status)),
                     )
-                }
-                if (contact.notes.isNotBlank()) {
-                    Text(contact.notes, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) {
-                        AssistChip(
-                            onClick = { menu = true },
-                            label = { Text(contact.status.label) },
-                            leadingIcon = { StatusDot(statusColor(contact.status)) },
-                            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null) },
-                            colors = AssistChipDefaults.assistChipColors(labelColor = statusColor(contact.status)),
-                        )
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                            ContactStatus.entries.forEach { s ->
-                                DropdownMenuItem(
-                                    text = { Text(s.label) },
-                                    onClick = { onStatusChange(s); menu = false },
-                                    leadingIcon = { StatusDot(statusColor(s)) },
-                                    trailingIcon = if (s == contact.status) ({ Icon(Icons.Filled.Check, null) }) else null,
-                                )
-                            }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
+                        ContactStatus.entries.forEach { s ->
+                            DropdownMenuItem(
+                                text = { Text(s.label) },
+                                onClick = { onStatusChange(s); menu = false },
+                                leadingIcon = { StatusDot(statusColor(s)) },
+                                trailingIcon = if (s == contact.status) ({ Icon(Icons.Filled.Check, null) }) else null,
+                            )
                         }
                     }
-                    if (home?.phone?.isNotBlank() == true) IconButton(onClick = onCall) { Icon(Icons.Filled.Phone, "Ligar") }
-                    if (home?.hasEmail == true) IconButton(onClick = onEmail) { Icon(Icons.Filled.Email, "Enviar email") }
                 }
+                if (home?.phone?.isNotBlank() == true) IconButton(onClick = onCall) { Icon(Icons.Filled.Phone, "Ligar") }
+                if (home?.hasEmail == true) IconButton(onClick = onEmail) { Icon(Icons.Filled.Email, "Enviar email") }
             }
-        },
-    ) {
-        Text(home?.name ?: "Lar removido da lista", style = MaterialTheme.typography.titleSmallEmphasized)
+        }
     }
 }

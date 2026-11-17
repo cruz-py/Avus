@@ -46,6 +46,8 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItemColors
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.ListItemShapes
 import androidx.compose.material3.MaterialShapes
@@ -57,6 +59,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.toPath
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -382,6 +385,34 @@ private object NoPrefetch : LazyListPrefetchStrategy {
     override fun LazyListPrefetchScope.onScroll(delta: Float, layoutInfo: LazyListLayoutInfo) {}
     override fun LazyListPrefetchScope.onVisibleItemsUpdated(layoutInfo: LazyListLayoutInfo) {}
     override fun NestedPrefetchScope.onNestedPrefetch(firstVisibleItemIndex: Int) {}
+}
+
+/**
+ * A list item's headline followed by several supporting lines, all in the item's headline slot.
+ *
+ * Never put more than one composable (a Column, a Row...) in a ListItem's `supportingContent`: ListItem
+ * reads that slot's first and last baselines while measuring, which places the slot's children before
+ * the slot itself is placed. Compose 1.12.1 then crashes ("LayoutNode N not found in RectList") when a
+ * LazyColumn reuses rows, e.g. scrolling the Lares list to the end after switching the municipality
+ * filter (Braga, then Vila Nova de Famalicão). A single Text there is fine. The headline slot's
+ * baselines are never read, and the slots are stacked with no gap, so the layout looks the same.
+ */
+@Composable
+fun HeadlineAndSupporting(
+    supportingColor: Color,
+    headline: @Composable () -> Unit,
+    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
+    supporting: @Composable ColumnScope.() -> Unit,
+) {
+    Column {
+        headline()
+        CompositionLocalProvider(
+            LocalContentColor provides supportingColor,
+            LocalTextStyle provides MaterialTheme.typography.bodyMedium, // ListItem's supporting text style
+        ) {
+            Column(verticalArrangement = verticalArrangement, content = supporting)
+        }
+    }
 }
 
 /** [rememberLazyListState] without prefetching; use it for every LazyColumn (see [NoPrefetch]). */

@@ -477,27 +477,6 @@ private fun CareHomeRow(
                 contentDescription = if (selected) "Retirar da seleção" else "Selecionar",
             )
         },
-        supportingContent = {
-            Column {
-                val distance = when {
-                    distanceKm != null -> Geo.formatDistance(distanceKm)
-                    sortedByDistance -> "Sem localização"
-                    else -> null
-                }
-                val place = listOfNotNull(distance, location.ifBlank { null }).joinToString(" · ")
-                if (place.isNotBlank()) Text(place, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (contactedAt != null) {
-                    Text(
-                        "Contactado a ${formatDate(contactedAt)}",
-                        style = MaterialTheme.typography.labelMediumEmphasized,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                } else if (home.legalForm.isNotBlank()) {
-                    Text(home.legalForm, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                OccupancyBar(home, Modifier.padding(top = 6.dp, end = 8.dp))
-            }
-        },
         trailingContent = {
             Icon(
                 if (home.hasEmail) Icons.Filled.Email else Icons.Outlined.Email,
@@ -507,7 +486,31 @@ private fun CareHomeRow(
             )
         },
     ) {
-        Text(home.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmallEmphasized)
+        // Not supportingContent: see HeadlineAndSupporting (crash when scrolling after a filter change).
+        HeadlineAndSupporting(
+            supportingColor = colors.supportingContentColor,
+            headline = {
+                Text(home.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmallEmphasized)
+            },
+        ) {
+            val distance = when {
+                distanceKm != null -> Geo.formatDistance(distanceKm)
+                sortedByDistance -> "Sem localização"
+                else -> null
+            }
+            val place = listOfNotNull(distance, location.ifBlank { null }).joinToString(" · ")
+            if (place.isNotBlank()) Text(place, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (contactedAt != null) {
+                Text(
+                    "Contactado a ${formatDate(contactedAt)}",
+                    style = MaterialTheme.typography.labelMediumEmphasized,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            } else if (home.legalForm.isNotBlank()) {
+                Text(home.legalForm, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            OccupancyBar(home, Modifier.padding(top = 6.dp, end = 8.dp))
+        }
     }
 }
 
