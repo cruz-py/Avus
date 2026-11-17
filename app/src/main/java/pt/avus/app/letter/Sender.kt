@@ -5,8 +5,11 @@ import android.content.ClipData
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -148,6 +151,41 @@ object Sender {
             .map { ComponentName(it.packageName, it.name) }
         return Intent.createChooser(sendIntent, "Enviar com…")
             .putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, excluded.toTypedArray())
+    }
+
+    private const val GMAIL = "com.google.android.gm"
+
+    /**
+     * Xiaomi phones (also Redmi and POCO) freeze apps in the background a few seconds after
+     * they leave the screen, so an email with attachments can stay in the email app's outbox
+     * until that app is opened again.
+     */
+    val holdsEmailsInOutbox: Boolean
+        get() = Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)
+
+    /** The email app the user most likely sends with: the default for "mailto:", else Gmail, else the first one. */
+    fun emailAppPackage(context: Context): String? {
+        val pm = context.packageManager
+        val mailto = Intent(Intent.ACTION_SENDTO, "mailto:".toUri())
+        val apps = pm.queryIntentActivities(mailto, 0).map { it.activityInfo.packageName }.distinct()
+        // With no default set, this resolves to the system's app picker, which is not in [apps].
+        val default = pm.resolveActivity(mailto, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+        return default?.takeIf { it in apps } ?: GMAIL.takeIf { it in apps } ?: apps.firstOrNull()
+    }
+
+    /** Brings the email app to the screen, which lets it send what is waiting in its outbox. */
+    fun openEmailApp(context: Context): Boolean {
+        val launch = emailAppPackage(context)?.let { context.packageManager.getLaunchIntentForPackage(it) }
+            ?: Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_EMAIL)
+        return runCatching { context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+    }
+
+    /** Opens the system page of the email app, where its battery saving can be turned off. */
+    fun openEmailAppSettings(context: Context): Boolean {
+        val pkg = emailAppPackage(context) ?: return false
+        return runCatching {
+            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:$pkg".toUri()))
+        }.isSuccess
     }
 
     fun dial(context: Context, phone: String) {

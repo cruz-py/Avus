@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -87,6 +88,8 @@ fun SendScreen(
     var isPreparing by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
     var completedCount by remember { mutableStateOf<Int?>(null) }
+    var emailOpened by rememberSaveable { mutableStateOf(false) }
+    var showBatteryTip by remember { mutableStateOf(false) }
 
     val selectedHomes = state.selectedHomes
     val withEmail = selectedHomes.filter { it.hasEmail }
@@ -111,6 +114,8 @@ fun SendScreen(
                 }
                 if (ok) {
                     vm.recordSent(target.map { it.id })
+                    emailOpened = true
+                    if (Sender.holdsEmailsInOutbox && !state.settings.batteryTipShown) showBatteryTip = true
                     onOpen()
                 } else vm.showMessage("Não foi encontrada nenhuma app de email. Instale o Gmail ou outra app de email.")
             } catch (e: Exception) {
@@ -337,6 +342,14 @@ fun SendScreen(
                     }
                 }
             }
+            if (emailOpened) {
+                OutboxNotice(
+                    onOpenEmail = {
+                        if (!Sender.openEmailApp(context)) vm.showMessage("Não foi possível abrir a app de email.")
+                    },
+                    onFixForGood = if (Sender.holdsEmailsInOutbox) ({ showBatteryTip = true }) else null,
+                )
+            }
             Text(
                 "A app abre o email já preenchido na sua app de email (Gmail, Outlook…). Reveja e carregue em \"Enviar\". " +
                     "Os lares ficam registados em \"Respostas\" para acompanhar.",
@@ -356,14 +369,44 @@ fun SendScreen(
         )
     }
 
-    completedCount?.let { n ->
+    if (showBatteryTip) {
+        fun close() {
+            vm.updateSettings { it.copy(batteryTipShown = true) }
+            showBatteryTip = false
+        }
+        AlertDialog(
+            onDismissRequest = { close() },
+            title = { Text("Evitar emails parados") },
+            text = {
+                Text(
+                    "Neste telemóvel, a poupança de bateria pode suspender a app de email logo depois de carregar " +
+                        "em \"Enviar\". O email fica na Caixa de saída até voltar a abrir a app.\n\n" +
+                        "Para o evitar, toque em \"Abrir definições\", depois em \"Poupança de bateria\" " +
+                        "e escolha \"Sem restrições\"."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    close()
+                    if (!Sender.openEmailAppSettings(context)) {
+                        vm.showMessage("Abra Definições > Apps > Gmail > Poupança de bateria > Sem restrições.")
+                    }
+                }) { Text("Abrir definições") }
+            },
+            dismissButton = { TextButton(onClick = { close() }) { Text("Agora não") } },
+        )
+    }
+
+    if (!showBatteryTip) completedCount?.let { n ->
         AlertDialog(
             onDismissRequest = { completedCount = null },
             title = { Text("Email preparado") },
             text = {
                 Text(
                     "Depois de enviar, os $n lares ficam em \"Respostas\" com o estado \"Enviado\". " +
-                        "Quando algum responder, atualize lá o estado. Quer limpar a seleção atual?"
+                        "Quando algum responder, atualize lá o estado. " +
+                        "Se o email ficar na Caixa de saída, abra a app de email para ele seguir.\n\n" +
+                        "Quer limpar a seleção atual?"
                 )
             },
             confirmButton = {
@@ -371,6 +414,31 @@ fun SendScreen(
             },
             dismissButton = { TextButton(onClick = { completedCount = null }) { Text("Manter seleção") } },
         )
+    }
+}
+
+/** After an email was opened: a stuck email leaves the outbox once the email app is back on screen. */
+@Composable
+private fun OutboxNotice(onOpenEmail: () -> Unit, onFixForGood: (() -> Unit)?) {
+    Surface(
+        Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Column(Modifier.padding(start = 16.dp, top = 16.dp, end = 8.dp, bottom = 4.dp)) {
+            Text(
+                "O email ficou na Caixa de saída? Abra a app de email: o envio termina quando ela aparece no ecrã.",
+                Modifier.padding(end = 8.dp),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                if (onFixForGood != null) {
+                    TextButton(onClick = onFixForGood, shapes = ButtonDefaults.shapes()) { Text("Resolver de vez") }
+                }
+                TextButton(onClick = onOpenEmail, shapes = ButtonDefaults.shapes()) { Text("Abrir app de email") }
+            }
+        }
     }
 }
 

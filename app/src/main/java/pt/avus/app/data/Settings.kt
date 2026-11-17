@@ -11,9 +11,12 @@ data class AppSettings(
     val dynamicColor: Boolean = false,
     /** Daily reminder about homes without an answer for a week. */
     val reminders: Boolean = true,
+    /** The one-time tip about battery saving holding emails in the outbox (Xiaomi phones) was shown. */
+    val batteryTipShown: Boolean = false,
 ) {
     fun toJson(): String = JSONObject()
         .put("theme", theme.name).put("dynamicColor", dynamicColor).put("reminders", reminders)
+        .put("batteryTipShown", batteryTipShown)
         .toString()
 
     companion object {
@@ -23,6 +26,7 @@ data class AppSettings(
                 theme = runCatching { ThemeMode.valueOf(o.getString("theme")) }.getOrDefault(ThemeMode.SYSTEM),
                 dynamicColor = o.optBoolean("dynamicColor", false),
                 reminders = o.optBoolean("reminders", true),
+                batteryTipShown = o.optBoolean("batteryTipShown", false),
             )
         }
     }
