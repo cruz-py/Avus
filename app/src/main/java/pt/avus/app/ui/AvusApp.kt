@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -129,22 +130,26 @@ fun AvusApp(vm: AvusViewModel = viewModel()) {
             }
             // Fade-through between tabs, using the theme's expressive motion.
             val fadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+            // Keeps each tab's saved state (e.g. the Lares filters) while another tab is shown.
+            val tabStates = rememberSaveableStateHolder()
             AnimatedContent(
                 currentTab,
                 transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
                 label = "tabs",
             ) { tab ->
-                when (tab) {
-                    AppTab.HOMES -> HomesScreen(state, vm, goToSend = { currentTab = AppTab.SEND }, onOpenSettings = openSettings)
-                    AppTab.RESIDENT -> ResidentScreen(state, vm, onOpenSettings = openSettings)
-                    AppTab.SEND -> SendScreen(
-                        state, vm,
-                        goToHomes = { currentTab = AppTab.HOMES },
-                        goToResident = { currentTab = AppTab.RESIDENT },
-                        goToReplies = { currentTab = AppTab.REPLIES },
-                        onOpenSettings = openSettings,
-                    )
-                    AppTab.REPLIES -> RepliesScreen(state, vm, goToHomes = { currentTab = AppTab.HOMES }, onOpenSettings = openSettings)
+                tabStates.SaveableStateProvider(tab.name) {
+                    when (tab) {
+                        AppTab.HOMES -> HomesScreen(state, vm, goToSend = { currentTab = AppTab.SEND }, onOpenSettings = openSettings)
+                        AppTab.RESIDENT -> ResidentScreen(state, vm, onOpenSettings = openSettings)
+                        AppTab.SEND -> SendScreen(
+                            state, vm,
+                            goToHomes = { currentTab = AppTab.HOMES },
+                            goToResident = { currentTab = AppTab.RESIDENT },
+                            goToReplies = { currentTab = AppTab.REPLIES },
+                            onOpenSettings = openSettings,
+                        )
+                        AppTab.REPLIES -> RepliesScreen(state, vm, goToHomes = { currentTab = AppTab.HOMES }, onOpenSettings = openSettings)
+                    }
                 }
             }
         }
