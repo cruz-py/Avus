@@ -1,0 +1,2 @@
+• Emails parados na Caixa de saída: depois de abrir o email, a app mostra um botão para abrir a app de email e concluir o envio.
+• Telemóveis Xiaomi: um aviso explica como desligar a poupança de bateria da app de email, para os emails não ficarem parados.
